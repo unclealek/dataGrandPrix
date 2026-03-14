@@ -1,7 +1,7 @@
 import React from 'react';
 
 export default function Leaderboard({ raceTime, scorecard }) {
-    const benchmark1 = 410.45;
+    const benchmark1 = 407.0;
     const benchmark2 = 420.1;
 
     let playerPosition = 3;

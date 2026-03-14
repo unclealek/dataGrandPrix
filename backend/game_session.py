@@ -63,6 +63,15 @@ class GameSession:
             if token in upper_query:
                 raise ValueError(f"Disallowed command found: {token.strip()}")
 
+        blocked_functions = [
+            "READ_CSV", "READ_CSV_AUTO", "READ_PARQUET",
+            "READ_JSON", "READ_TEXT", "READ_NDJSON",
+            "GLOB(", "HTTPFS", "PARQUET_SCAN",
+        ]
+        for fn in blocked_functions:
+            if fn in upper_query:
+                raise ValueError(f"Disallowed function: {fn.lower()}. Only the bronze table is available.")
+
     def get_table_data(self, table_name: str, limit: int = 100):
         if not table_name.replace("_", "").isalnum():
             return None
