@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Editor from '@monaco-editor/react';
 
 export default function SQLEditor({ onRunQuery, isLoading }) {
-    const [query, setQuery] = useState(`-- Stage 1: Clean the raw telemetry into a silver table\nCREATE OR REPLACE TABLE silver AS\nSELECT \n  lap,\n  driver_id,\n  lap_time,\n  COALESCE(LOWER(TRIM(tire_type)), 'soft') AS tire_type,\n  track_temp,\n  fuel_level\nFROM bronze\nWHERE lap_time IS NOT NULL;\n\n-- Stage 2: Deduplicate and prepare the final gold table\n-- CREATE OR REPLACE TABLE gold AS\n-- SELECT * EXCLUDE (rn) FROM (\n--   SELECT *, ROW_NUMBER() OVER (PARTITION BY driver_id, lap ORDER BY lap_time) AS rn\n--   FROM silver\n-- ) WHERE rn = 1 AND fuel_level >= 0;`);
+    const [query, setQuery] = useState(`-- Stage 1: Clean the raw telemetry into a silver table\nCREATE OR REPLACE TABLE silver AS\nSELECT \n  lap,\n  driver_id,\n  lap_time,\n  COALESCE(LOWER(TRIM(tire_type)), 'soft') AS tire_type,\n  TRY_CAST(REPLACE(CAST(track_temp AS VARCHAR), 'C', '') AS INTEGER) AS track_temp,\n  fuel_level\nFROM bronze\nWHERE lap_time IS NOT NULL;\n\n-- Stage 2: Deduplicate and prepare the final gold table\nCREATE OR REPLACE TABLE gold AS\nSELECT * EXCLUDE (rn) FROM (\n  SELECT *, ROW_NUMBER() OVER (PARTITION BY driver_id, lap ORDER BY lap_time) AS rn\n  FROM silver\n) WHERE rn = 1 AND fuel_level >= 0;`);
     const [editorMode, setEditorMode] = useState('monaco');
     const [monacoReady, setMonacoReady] = useState(false);
 

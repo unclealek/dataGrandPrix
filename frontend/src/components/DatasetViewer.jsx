@@ -17,7 +17,7 @@ export default function DatasetViewer({ data, title = "Dataset" }) {
     const columns = Object.keys(data[0]);
 
     return (
-        <div className="flex min-h-[720px] flex-col rounded-xl border border-slate-200 bg-white">
+        <div className="flex h-[60vh] max-h-[700px] flex-col rounded-xl border border-slate-200 bg-white">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900">{title}</h3>

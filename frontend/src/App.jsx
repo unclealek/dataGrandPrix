@@ -12,6 +12,7 @@ function App() {
   const [activeTable, setActiveTable] = useState('bronze');
   const [dataset, setDataset] = useState([]);
   const [datasetTitle, setDatasetTitle] = useState('Table: bronze');
+  const [availableTables, setAvailableTables] = useState(['bronze']);
   const [scorecard, setScorecard] = useState(null);
   const [raceResults, setRaceResults] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,9 +35,31 @@ function App() {
     }
   };
 
+  const checkAvailableTables = async () => {
+    try {
+      const candidates = ['bronze', 'silver', 'gold'];
+      const available = [];
+      for (const t of candidates) {
+        const res = await fetch(`${API_URL}/dataset?table=${t}`);
+        if (res.ok) available.push(t);
+      }
+      setAvailableTables(available);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     fetchDataset('bronze');
+    checkAvailableTables();
   }, []);
+
+  useEffect(() => {
+    if (errorMsg) {
+      const timer = setTimeout(() => setErrorMsg(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMsg]);
 
   const loadBestAvailableTable = async () => {
     const candidates = ['gold', 'silver', 'bronze'];
@@ -60,6 +83,7 @@ function App() {
       if (!res.ok) {
         setErrorMsg(data.detail || 'Query failed');
       } else {
+        await checkAvailableTables();
         if (data.result.kind === 'rows') {
           setDataset(data.result.rows);
           setActiveTable('query');
@@ -78,6 +102,11 @@ function App() {
 
   const evaluateScore = async () => {
     try {
+      const goldExists = await fetch(`${API_URL}/dataset?table=gold`);
+      if (!goldExists.ok) {
+        setScorecard(null);
+        return null;
+      }
       const res = await fetch(`${API_URL}/score-data`, { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
@@ -117,6 +146,7 @@ function App() {
       setRaceResults(null);
       setErrorMsg('');
       setDatasetTitle('Table: bronze');
+      setAvailableTables(['bronze']);
       await fetchDataset('bronze');
     } catch (err) {
       console.error(err);
@@ -152,6 +182,7 @@ function App() {
               <button
                 onClick={handleRunRace}
                 disabled={!scorecard}
+                title={!scorecard ? "Create a gold table first" : ""}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-5 py-2 font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-emerald-300"
               >
                 <Zap size={18} />
@@ -168,8 +199,8 @@ function App() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div className="xl:col-span-7 space-y-6">
+        <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="space-y-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="section-heading">Data workspace</h2>
@@ -180,9 +211,13 @@ function App() {
                   <button
                     key={t}
                     onClick={() => fetchDataset(t)}
+                    disabled={!availableTables.includes(t)}
+                    title={!availableTables.includes(t) ? "Run SQL to create this table first" : ""}
                     className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition ${activeTable === t
                       ? 'bg-slate-900 text-white'
-                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                      : availableTables.includes(t)
+                        ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                        : 'border border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
                       }`}
                   >
                     {t}
@@ -193,7 +228,7 @@ function App() {
             <DatasetViewer data={dataset} title={datasetTitle} />
           </div>
 
-          <div className="xl:col-span-5 space-y-6">
+          <div className="space-y-6">
             <section>
               <div className="mb-4">
                 <h2 className="section-heading">SQL editor</h2>
@@ -209,23 +244,25 @@ function App() {
               </div>
               <QualityScorePanel scorecard={scorecard} />
             </section>
-
-            <section>
-              <div className="mb-4">
-                <h2 className="section-heading">Simulation</h2>
-                <p className="section-subtitle">Replay the race and compare the final lap time against the benchmark drivers.</p>
-              </div>
-              <RaceReplay raceResults={raceResults} />
-            </section>
-
-            <section>
-              <div className="mb-4">
-                <h2 className="section-heading">Leaderboard</h2>
-                <p className="section-subtitle">Your position updates after each completed race simulation.</p>
-              </div>
-              <Leaderboard raceTime={raceResults?.final_time} scorecard={scorecard} />
-            </section>
           </div>
+        </section>
+
+        <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          <section>
+            <div className="mb-4">
+              <h2 className="section-heading">Simulation</h2>
+              <p className="section-subtitle">Replay the race and compare the final lap time against the benchmark drivers.</p>
+            </div>
+            <RaceReplay raceResults={raceResults} />
+          </section>
+
+          <section>
+            <div className="mb-4">
+              <h2 className="section-heading">Leaderboard</h2>
+              <p className="section-subtitle">Your position updates after each completed race simulation.</p>
+            </div>
+            <Leaderboard raceTime={raceResults?.final_time} scorecard={scorecard} />
+          </section>
         </section>
       </div>
     </div>

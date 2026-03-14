@@ -49,9 +49,17 @@ export default function RaceReplay({ raceResults }) {
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (canvas && raceResults) {
+        if (canvas) {
             const ctx = canvas.getContext('2d');
-            drawFrame(ctx, 0, canvas.width / 2, canvas.height / 2, canvas.width * 0.8, canvas.height * 0.6);
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = 400 * dpr;
+            canvas.height = 200 * dpr;
+            canvas.style.width = '400px';
+            canvas.style.height = '200px';
+            ctx.scale(dpr, dpr);
+            if (raceResults) {
+                drawFrame(ctx, 0, 200, 100, 320, 120);
+            }
         }
         setIsPlaying(false);
         setCurrentLap(0);
@@ -64,10 +72,10 @@ export default function RaceReplay({ raceResults }) {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
 
-        const trackWidth = canvas.width * 0.8;
-        const trackHeight = canvas.height * 0.6;
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+        const trackWidth = 320;
+        const trackHeight = 120;
+        const centerX = 200;
+        const centerY = 100;
 
         let startTime = performance.now();
         let currentLapIndex = 0;
