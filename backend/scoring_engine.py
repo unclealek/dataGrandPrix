@@ -33,7 +33,7 @@ def analyze_issues(df: pd.DataFrame) -> dict:
 
     if "tire_type" in df.columns:
         normalized = df["tire_type"].dropna().astype(str).str.strip()
-        valid_tires = {"Soft", "Medium", "Hard"}
+        valid_tires = {"soft", "medium", "hard", "Soft", "Medium", "Hard"}
         issues["inconsistent_tire_type"] = int((~normalized.isin(valid_tires)).sum())
     else:
         issues["inconsistent_tire_type"] = len(df)

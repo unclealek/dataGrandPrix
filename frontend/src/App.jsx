@@ -6,7 +6,7 @@ import RaceReplay from './components/RaceReplay';
 import Leaderboard from './components/Leaderboard';
 import { Database, Zap, RefreshCw } from 'lucide-react';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = '/api';
 
 function App() {
   const [activeTable, setActiveTable] = useState('bronze');
@@ -94,10 +94,6 @@ function App() {
   };
 
   const handleRunRace = async () => {
-    if (!scorecard) {
-      setErrorMsg('Please evaluate the gold table first to get a score.');
-      return;
-    }
     try {
       const res = await fetch(`${API_URL}/run-race`, {
         method: 'POST'
@@ -184,11 +180,10 @@ function App() {
                   <button
                     key={t}
                     onClick={() => fetchDataset(t)}
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition ${
-                      activeTable === t
-                        ? 'bg-slate-900 text-white'
-                        : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold capitalize transition ${activeTable === t
+                      ? 'bg-slate-900 text-white'
+                      : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
                   >
                     {t}
                   </button>

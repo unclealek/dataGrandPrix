@@ -2,19 +2,11 @@ import React, { useEffect, useState } from 'react';
 import Editor from '@monaco-editor/react';
 
 export default function SQLEditor({ onRunQuery, isLoading }) {
-    const [query, setQuery] = useState('-- Write your SQL here to clean the telemetry data.\n-- Example:\n-- CREATE TABLE silver AS SELECT * FROM bronze;\n\nCREATE TABLE silver AS \nSELECT * FROM bronze;\n');
+    const [query, setQuery] = useState('-- Write your SQL here to clean the telemetry data.\n-- Example:\n-- CREATE TABLE gold AS\n-- SELECT * FROM (\n--   SELECT *, ROW_NUMBER() OVER (PARTITION BY driver_id, lap ORDER BY lap_time) AS rn\n--   FROM silver\n-- ) WHERE rn = 1 AND fuel_level >= 0;\n\nCREATE TABLE silver AS \nSELECT * FROM bronze;\n');
     const [editorMode, setEditorMode] = useState('monaco');
     const [monacoReady, setMonacoReady] = useState(false);
 
-    useEffect(() => {
-        if (monacoReady) return undefined;
 
-        const timer = window.setTimeout(() => {
-            setEditorMode('textarea');
-        }, 1500);
-
-        return () => window.clearTimeout(timer);
-    }, [monacoReady]);
 
     return (
         <div className="flex h-[420px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
