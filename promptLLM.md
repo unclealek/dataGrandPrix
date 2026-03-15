@@ -1,342 +1,439 @@
-Prompt for LLM — Build the MVP Prototype
-You are a senior full-stack engineer and data engineer.Your task is to help me build an MVP prototype of a SQL-based data engineering game where cleaning data improves a Formula-1 race performance.
-This is an educational game for data engineers where players must clean messy datasets using SQL to improve race outcomes.
-You must design and implement a working prototype with a clean architecture and clear modular structure.
+Build a frontend-first MVP for a web app called “Data Grand Prix” based on this exact product concept:
 
-Product Concept
-The game is called Data Grand Prix.
-Players receive a messy CSV dataset representing race telemetry.
-They must write SQL queries to clean the dataset.
-The game evaluates the cleaned dataset and calculates a data quality score.
-The quality score affects the race performance.
-The race is visualized using an F1 replay animation.
-Better data → faster race.
-Poor data → penalties, pit stops, slower laps.
+PRODUCT SUMMARY
+Data Grand Prix is a racing-inspired SQL cleaning game where users progressively clean a dataset through table layers:
+- Bronze
+- Silver
+- Gold
 
-Core Gameplay Loop
-	1	Generate messy dataset
-	2	Player writes SQL to clean it
-	3	SQL runs in a sandbox database
-	4	System evaluates the cleaned data
-	5	Compute data quality score
-	6	Convert score into race metrics
-	7	Run race simulation
-	8	Visualize race replay
-	9	Display leaderboard
+The player writes SQL in a Monaco editor, runs the query, previews the cleaned result on the right panel, confirms the result if satisfied, and then promotes data through cleaning stages using a “Qualify” flow.
 
-MVP Requirements
-Implement a minimal working prototype.
-Players must be able to:
-	•	view dataset
-	•	write SQL queries
-	•	execute queries
-	•	create bronze/silver/gold tables
-	•	receive a quality score
-	•	run a race simulation
-	•	see race results
+The UI should feel like a motorsport / F1 telemetry dashboard: dark, premium, sharp, structured, and interactive.
 
-Data System
-Dataset characteristics:
-	•	CSV file
-	•	100 rows
-	•	same dataset for every player (for MVP)
-Example columns:
+==================================================
+CORE UX MODEL
+==================================================
 
-driver_id
-lap
-lap_time
-tire_type
-fuel_level
-track_temp
-pit_stop
-sector1_time
-sector2_time
-sector3_time
+There are two main table panels:
 
-Dataset should intentionally contain:
-	•	null values
-	•	duplicate rows
-	•	inconsistent casing
-	•	schema mismatches
-	•	invalid values
-	•	outliers
-	•	negative values
-	•	mixed units
-Example bad data:
+LEFT PANEL
+- This is the current working table
+- It represents the current confirmed state of the dataset for the active layer
+- This is the table the next SQL query should run against
 
-lap_time = NULL
-track_temp = "34C"
-fuel_level = -5
-duplicate laps
-tire_type = Soft / soft / SOFT
+RIGHT PANEL
+- This is the preview / result panel
+- After the user executes SQL, the transformed result appears here
+- The user can inspect it before accepting it
 
+FLOW
+1. User starts with a current table on the left
+2. User writes SQL in Monaco editor
+3. User clicks Run
+4. SQL executes against the current left-side table
+5. Result appears in the right-side “Applied Clean” panel
+6. User explores and reviews the result
+7. User can:
+   - Confirm it
+   - Reverse / discard it
+   - Use history navigation within the current layer
 
-SQL Gameplay Rules
-Players must write SQL queries.
-Allowed SQL operations for MVP:
+CONFIRM LOGIC
+- When the user clicks Confirm:
+  - The result currently shown in the right panel becomes the new confirmed current table
+  - That confirmed table moves into the left panel
+  - The right panel is cleared or reset to preview state
+  - The newly confirmed left table is now the table used for the next SQL execution
+- This creates an iterative cleaning workflow
 
-CREATE TABLE AS SELECT
-SELECT
+REVERSE / HISTORY LOGIC
+- There should be a Reverse button for undoing the latest confirmed change within the current layer
+- There should also be a History control/button/panel so users can navigate previous confirmed states within the current layer
+- Users should be able to move backward and inspect or restore earlier confirmed states within the same layer
+- Think of this as version history for the current table layer
 
-Players must create these tables:
+IMPORTANT LAYER RULE
+History is isolated by layer:
+- Bronze history is only navigable while in Bronze
+- Silver history is only navigable while in Silver
+- Gold history is only navigable while in Gold
+- Users cannot move backward across layers once they qualify upward
 
-bronze
-silver
-gold
+==================================================
+LAYER / QUALIFY SYSTEM
+==================================================
 
-Expected pipeline:
+The app has three table layers:
+- Bronze Table
+- Silver Table
+- Gold Table
 
-CSV → bronze → silver → gold
+Users begin in Bronze.
 
-Example player SQL:
+QUALIFY BUTTON BEHAVIOR
+When the user clicks the large “QUALIFY” button:
+- Open a modal or overlay
+- Show radio button options:
+  - Bronze Table
+  - Silver Table
+  - Gold Table
 
-CREATE TABLE bronze AS
-SELECT * FROM read_csv_auto('telemetry_raw.csv');
+RULES FOR RADIO OPTIONS
+1. The current layer should be visible but disabled/greyed out
+   Example:
+   - If user is in Bronze, “Bronze Table” is disabled and cannot be selected
+   - If user is in Silver, “Silver Table” is disabled
+   - If user is in Gold, “Gold Table” is disabled
 
-CREATE TABLE silver AS
-SELECT
-driver_id,
-lap,
-COALESCE(lap_time, AVG(lap_time) OVER()) AS lap_time,
-LOWER(tire_type) AS tire_type,
-CAST(REPLACE(track_temp,'C','') AS INTEGER) AS track_temp,
-fuel_level
-FROM bronze;
+2. Users can qualify the current table upward only
+   - From Bronze → Silver or Gold
+   - From Silver → Gold
+   - From Gold → nowhere further
 
-CREATE TABLE gold AS
-SELECT DISTINCT *
-FROM silver
-WHERE fuel_level >= 0;
+3. Once a user qualifies into a higher layer:
+   - The current confirmed table becomes the starting table of that new layer
+   - They can no longer reverse into the previous layer
+   - They can no longer access the previous layer’s history
+   - They can only work with history created inside the newly qualified layer
 
+4. History remains separate per layer
+   - Bronze has its own state history
+   - Silver has its own state history
+   - Gold has its own state history
 
-Data Quality Scoring System
-Evaluate the gold dataset using these weights:
+EXAMPLE
+- User cleans Bronze several times and confirms multiple states
+- Bronze history contains those confirmed versions
+- User clicks Qualify and promotes current Bronze table to Silver
+- Silver starts with that promoted version as its base state
+- Bronze history is now locked and inaccessible
+- User can continue cleaning in Silver and create Silver-only history
+- Later user may qualify Silver to Gold
+- Silver history then becomes locked and inaccessible
+- Gold begins with the promoted Silver state
 
-Null handling → 30%
-Deduplication → 20%
-Schema validation → 20%
-Normalization → 20%
-Outlier detection → 10%
+==================================================
+PAGE LAYOUT
+==================================================
 
-Total score:
+Recreate this structure faithfully:
 
-0 – 100
+1. TOP HEADER
+- Title: DATA GRAND PRIX
+- Reset button on top right
+- Optional current layer badge:
+  - Bronze
+  - Silver
+  - Gold
+- Racing / telemetry styling
+- Dark premium dashboard aesthetic
 
-Example result:
+2. TELEMETRY SECTION
+- Label: TELEMETRY
+- Two side-by-side panels
 
-Null Handling: 25/30
-Deduplication: 20/20
-Schema: 18/20
-Normalization: 15/20
-Outliers: 7/10
+LEFT PANEL
+- Title should reflect current context, for example:
+  - CURRENT TABLE
+  - or BRONZE CURRENT / SILVER CURRENT / GOLD CURRENT
+- Displays the latest confirmed table for the active layer
 
-Final Score: 85
+RIGHT PANEL
+- Title: APPLIED CLEAN
+- Displays the preview result of the latest SQL execution
+- Includes status feedback after run:
+  - success
+  - rows returned
+  - validation warnings if needed
 
+RIGHT PANEL ACTIONS
+After successful query execution, show:
+- Confirm button
+- Reverse button or discard preview button
+- Optional History button/control nearby
 
-Over-Cleaning Penalty
-Penalize excessive row removal.
-Rules:
+3. EDITOR MODE STRIP
+- Small strip with two tabs:
+  - MONACO RUN
+  - PLAIN EDITOR
+- Monaco Run active by default
+- Plain Editor can be present visually even if basic in MVP
 
-if gold_rows < 60:
-    penalty = -15
+4. SQL EDITOR SECTION
+- Real Monaco Editor, not a fake textarea
+- Dark SQL syntax highlighting
+- Starter SQL
+- Run button aligned bottom-right of editor section
 
-if gold_rows < 80:
-    penalty = -5
+5. BOTTOM PRIMARY CTA
+- Large “QUALIFY” button
+- Styled like a race advancement / progression control
 
+==================================================
+EDITOR / EXECUTION ARCHITECTURE
+==================================================
 
-Race Engine Logic
-Race performance formula:
+Use this exact architecture:
 
-lap_time = base_lap - quality_bonus + penalties
+Frontend (Monaco SQL editor):
+- User types SQL into Monaco Editor
+- On clicking Run, read SQL using editor.getValue() or component state/value
+- Send SQL to backend using HTTP POST /api/query
 
-Example:
+Backend API:
+- Receives SQL string
+- Validates and authorizes it
+- Executes it against the current active confirmed table state for the current layer
+- Returns rows or an error as JSON
 
-base_lap = 90 seconds
-quality_bonus = score * 0.1
-penalties = unresolved_data_issues * 0.5
+IMPORTANT
+- Never execute SQL directly in the browser
+- All execution happens server-side
+- The backend should understand the currently active layer and current confirmed state
 
-Example:
+==================================================
+STATE MODEL
+==================================================
 
-score = 90
-bonus = 9
+Implement an explicit state model for the MVP.
 
-lap_time = 90 - 9 = 81
+Suggested concept:
 
-Poor cleaning example:
+activeLayer:
+- bronze
+- silver
+- gold
 
-score = 55
-bonus = 5.5
-
-lap_time = 84.5
-
-Better cleaning results in faster lap times.
-
-Race Simulation Output
-Generate race results as JSON.
-Example:
-
+layerState:
 {
-  "driver": "player",
-  "laps": [
-    {"lap": 1, "lap_time": 83.1},
-    {"lap": 2, "lap_time": 82.9},
-    {"lap": 3, "lap_time": 83.4}
-  ],
-  "pit_stops": 1,
-  "final_time": 415.3
+  bronze: {
+    history: [tableVersion1, tableVersion2, ...],
+    currentIndex: number
+  },
+  silver: {
+    history: [tableVersion1, tableVersion2, ...],
+    currentIndex: number
+  },
+  gold: {
+    history: [tableVersion1, tableVersion2, ...],
+    currentIndex: number
+  }
 }
 
+previewState:
+- Holds result of latest SQL execution before confirmation
+- Shown on the right panel only
+- Does not affect left panel until Confirm is pressed
 
-Visualization
-Integrate race visualization using this project:
-F1 race replay visualization:
-@f1-race-replay
-The replay engine should consume race JSON and animate the cars.
-Integrate the visualization into the web app.
+CONFIRM ACTION
+- Push preview result into active layer history
+- Advance currentIndex
+- Update left panel
+- Clear preview
 
-Technology Stack
-Use this stack:
-Backend:
-PythonFastAPI
-Database Engine:
-DuckDB
-Why DuckDB:
-	•	runs SQL directly on CSV
-	•	lightweight
-	•	no server required
-	•	ideal for sandbox SQL execution
-Frontend:
-React
-Editor:
-Monaco Editor (SQL editor)
-Visualization:
-D3.js or Canvas
-Race replay:
-Integrate the F1 race replay repository.
+REVERSE ACTION
+- Move backward within current layer history only
+- Never across layers
 
-Backend Responsibilities
-Backend must:
-	•	generate messy dataset
-	•	run SQL queries safely
-	•	track table state
-	•	evaluate data quality
-	•	compute race metrics
-	•	produce race results JSON
-Example flow:
+HISTORY NAVIGATION
+- Allow user to inspect and restore prior confirmed versions within active layer
+- Could be a dropdown, drawer, version list, or step navigation UI
+- Should show version labels such as:
+  - Bronze v1
+  - Bronze v2
+  - Bronze v3
+  - Silver v1
+  - etc.
 
-POST /run-sql
-POST /score-data
-POST /run-race
+QUALIFY ACTION
+- Promote current confirmed state from active layer into selected higher layer
+- Initialize target layer history with that promoted dataset as its first version if not already created
+- Switch activeLayer to the selected target layer
+- Lock access to previous layer history
 
+==================================================
+RESET LOGIC
+==================================================
 
-Frontend Components
-Build these UI components:
+Reset should restore the entire experience to initial MVP state:
+- Active layer back to Bronze
+- Bronze history reset to initial raw dataset
+- Silver history cleared
+- Gold history cleared
+- Preview cleared
+- Editor reset to starter SQL
 
-Dataset Viewer
-SQL Editor
-Run Query Button
-Quality Score Panel
-Race Replay Panel
-Leaderboard
+==================================================
+MVP DATASET
+==================================================
 
-User flow:
+Use a sample messy dataset with realistic columns, for example:
+- id
+- first_name
+- last_name
+- email
+- country
+- signup_date
+- amount
+- status
 
-Load dataset
-Write SQL
-Execute query
-View score
-Run race
-Watch replay
+Include messy characteristics:
+- duplicates
+- nulls
+- inconsistent casing
+- malformed email formatting
+- extra spaces
+- country name inconsistency
 
+The game should feel like users are progressively transforming dirty data into higher quality layers.
 
-System Architecture
+==================================================
+BACKEND QUERY SAFETY
+==================================================
 
-Dataset Generator
-      ↓
-telemetry_raw.csv
-      ↓
-DuckDB Bronze Table
-      ↓
-User SQL Queries
-      ↓
-Silver Table
-      ↓
-Gold Table
-      ↓
-Quality Evaluation
-      ↓
-Race Simulation
-      ↓
-Race Replay Visualization
+For MVP safety:
+- Prefer allowing SELECT-only queries at first
+- Or support a tightly sandboxed transformation model
+- Prevent destructive operations such as:
+  - DROP
+  - DELETE
+  - TRUNCATE
+  - ALTER
+  - INSERT
+  - UPDATE
+unless the sandbox is intentionally designed for them
 
+If needed, allow users to query from a known current working table alias such as:
+- current_table
 
-Safety Rules for SQL Execution
-Ensure SQL sandbox safety.
-Restrict commands:
-Allow:
-
+Example user query:
 SELECT
-CREATE TABLE AS
+  TRIM(LOWER(first_name)) AS first_name,
+  TRIM(LOWER(last_name)) AS last_name,
+  email,
+  country,
+  amount
+FROM current_table
 
-Disallow:
+==================================================
+API CONTRACT
+==================================================
 
-DROP
-DELETE
-UPDATE
-ALTER
+POST /api/query
+Request:
+{
+  "sql": "SELECT ...",
+  "activeLayer": "bronze",
+  "currentVersionId": "bronze_v3"
+}
 
-Prevent filesystem access beyond provided CSV.
+Response success:
+{
+  "success": true,
+  "columns": [...],
+  "rows": [...],
+  "rowCount": 100
+}
 
-MVP Deliverables
-Produce a working prototype with:
-	1	dataset generator
-	2	SQL execution engine
-	3	bronze/silver/gold pipeline
-	4	data quality scoring
-	5	race simulation logic
-	6	replay visualization
-	7	leaderboard
+Response error:
+{
+  "success": false,
+  "error": "Human-readable error message"
+}
 
-Code Requirements
-Write:
-	•	clean modular code
-	•	clear comments
-	•	structured folders
-	•	easy to extend later
-Example project structure:
+Optional qualify endpoint:
+POST /api/qualify
+Request:
+{
+  "fromLayer": "bronze",
+  "toLayer": "silver",
+  "currentVersionId": "bronze_v4"
+}
 
-backend/
-  app.py
-  dataset_generator.py
-  sql_engine.py
-  scoring_engine.py
-  race_engine.py
+Response:
+{
+  "success": true,
+  "activeLayer": "silver"
+}
 
-frontend/
-  src/
-    SQL_editor
-    Dataset_viewer
-    Race_replay
+==================================================
+DESIGN SYSTEM
+==================================================
 
+Visual direction:
+- Dark racing dashboard
+- F1 / telemetry inspiration
+- Steel, graphite, dark navy surfaces
+- Gold/yellow accent for QUALIFY and CONFIRM
+- Blue/steel accent for editor and system controls
+- Panel depth, subtle texture, premium contrast
+- Clean typography
+- Strong hierarchy
+- Desktop-first
+- Modern and believable, not cartoonish
 
-Goal
-Deliver a fully working prototype demonstrating:
-	•	SQL-driven gameplay
-	•	data quality scoring
-	•	race simulation
-	•	visual replay
-Focus on functionality over polish.
+Important UI cues:
+- Current layer badge clearly visible
+- Confirm state visually obvious
+- History/navigation controls easy to discover
+- Disabled radio option for current layer clearly greyed out
+- Locked previous-layer history implied once qualified
 
-Instruction to the LLM
-Work step-by-step.
-First:
-	1	Design the project architecture.
-Then:
-	2	Build the backend SQL execution system.
-Then:
-	3	Implement the scoring engine.
-Then:
-	4	implement race simulation.
-Then:
-	5	integrate the race replay visualization.
-Explain decisions and provide runnable code.
+==================================================
+STACK
+==================================================
+
+Preferred stack:
+- Next.js + React
+- Tailwind CSS
+- Monaco Editor
+- Next.js API routes or Express backend
+- SQLite/Postgres or an in-memory mock backend for MVP
+- Reusable data grid / table component
+
+==================================================
+DELIVERABLES
+==================================================
+
+Generate all of the following:
+
+1. Full frontend page implementation
+2. Monaco editor integration
+3. Left and right telemetry table panels
+4. Confirm / Reverse / History interaction logic
+5. Qualify modal with radio buttons
+6. Layered state management for Bronze / Silver / Gold
+7. API route for SQL execution
+8. Mock dataset
+9. Safe query execution logic
+10. Clean file structure
+11. Local setup instructions
+
+==================================================
+IMPORTANT IMPLEMENTATION NOTES
+==================================================
+
+- The Monaco editor must be real and functional
+- The left panel must always represent the latest confirmed current table for the active layer
+- The right panel must always represent the latest unconfirmed preview result
+- Confirm must move preview result into the left panel as the new working state
+- Reverse/history must work only within the active layer
+- Qualifying must permanently lock backward navigation into previous layers
+- The UI should closely match this structure:
+  header → telemetry panels → mode strip → SQL editor → qualify flow
+- Build for extensibility so game scoring and racing mechanics can be added later
+
+==================================================
+OPTIONAL FUTURE HOOKS
+==================================================
+
+Leave clean extension points for:
+- lap timing
+- quality score
+- penalties for over-cleaning
+- telemetry stats
+- replay animation
+- scenario-based races
+- multiplayer later
+
+Now generate the full implementation with clean, modular, extensible code.
