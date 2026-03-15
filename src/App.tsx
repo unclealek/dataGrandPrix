@@ -31,6 +31,127 @@ const layerTheme: Record<Layer, { color: string; accentClass: string }> = {
   gold: { color: "#FFD700", accentClass: "tier-gold" },
 };
 
+const queryPresets = [
+  {
+    label: "Normalization",
+    sql: `SELECT
+  id,
+  first_name,
+  last_name,
+  email,
+  CASE LOWER(TRIM(country))
+    WHEN 'usa' THEN 'USA'
+    WHEN 'united states' THEN 'USA'
+    WHEN 'uk' THEN 'United Kingdom'
+    WHEN 'united kingdom' THEN 'United Kingdom'
+    WHEN 'canada' THEN 'Canada'
+    WHEN 'australia' THEN 'Australia'
+    WHEN 'new zealand' THEN 'New Zealand'
+    ELSE country
+  END AS country,
+  signup_date,
+  amount,
+  LOWER(TRIM(status)) AS status
+FROM current_table;`,
+  },
+  {
+    label: "Amount Clean",
+    sql: `SELECT
+  id,
+  first_name,
+  last_name,
+  email,
+  country,
+  signup_date,
+  CASE
+    WHEN amount IS NULL OR TRIM(amount) = '' THEN amount
+    WHEN TRIM(amount) LIKE '$%,%.%'
+      THEN substr(substr(TRIM(amount), 2), 1, instr(substr(TRIM(amount), 2), ',') - 1)
+           || substr(substr(TRIM(amount), 2), instr(substr(TRIM(amount), 2), ',') + 1)
+    WHEN TRIM(amount) LIKE '%,%.%'
+      THEN substr(TRIM(amount), 1, instr(TRIM(amount), ',') - 1)
+           || substr(TRIM(amount), instr(TRIM(amount), ',') + 1)
+    WHEN TRIM(amount) LIKE '$%'
+      THEN substr(TRIM(amount), 2)
+    ELSE TRIM(amount)
+  END AS amount,
+  status
+FROM current_table;`,
+  },
+  {
+    label: "Email Repair",
+    sql: `SELECT
+  id,
+  TRIM(first_name) AS first_name,
+  TRIM(last_name) AS last_name,
+  CASE
+    WHEN LOWER(TRIM(email)) LIKE '%_@_%._%' THEN LOWER(TRIM(email))
+    ELSE LOWER(TRIM(first_name)) || '.' || LOWER(TRIM(last_name)) || '@email.com'
+  END AS email,
+  country,
+  signup_date,
+  amount,
+  status
+FROM current_table;`,
+  },
+  {
+    label: "Date Format",
+    sql: `SELECT
+  id,
+  first_name,
+  last_name,
+  email,
+  country,
+  CASE
+    WHEN signup_date LIKE '__/__/____'
+      THEN substr(signup_date, 7, 4) || '-' || substr(signup_date, 1, 2) || '-' || substr(signup_date, 4, 2)
+    ELSE TRIM(signup_date)
+  END AS signup_date,
+  amount,
+  status
+FROM current_table;`,
+  },
+  {
+    label: "Fill Amount",
+    sql: `SELECT
+  id,
+  first_name,
+  last_name,
+  email,
+  country,
+  signup_date,
+  COALESCE(amount, '0') AS amount,
+  status
+FROM current_table;`,
+  },
+  {
+    label: "Fill First Name",
+    sql: `SELECT
+  id,
+  COALESCE(first_name, 'unknown') AS first_name,
+  last_name,
+  email,
+  country,
+  signup_date,
+  amount,
+  status
+FROM current_table;`,
+  },
+  {
+    label: "Fill Country",
+    sql: `SELECT
+  id,
+  first_name,
+  last_name,
+  email,
+  COALESCE(country, 'USA') AS country,
+  signup_date,
+  amount,
+  status
+FROM current_table;`,
+  },
+];
+
 function createSnapshot(layer: Layer, rows: TableRow[], version: number, columns = initialColumns): TableSnapshot {
   return {
     versionId: `${layer}-${version}-${Date.now()}`,
@@ -74,6 +195,12 @@ export default function App() {
   const [previewSuccessFlash, setPreviewSuccessFlash] = useState(false);
   const [selectedQualifyTarget, setSelectedQualifyTarget] = useState<Layer | null>(null);
   const [pendingScoreEvent, setPendingScoreEvent] = useState<ScoreEvent | null>(null);
+  const [raceFinished, setRaceFinished] = useState<{
+    layer: Layer;
+    score: number;
+    message: string;
+    isPerfectLap: boolean;
+  } | null>(null);
   const [qualifyArmed, setQualifyArmed] = useState<Record<Layer, boolean>>({
     bronze: false,
     silver: false,
@@ -413,7 +540,7 @@ export default function App() {
     }
 
     const qualifyEvent = scoreQualify(targetLayer, session.scoring);
-    if (qualifyEvent) {
+    if (qualifyEvent?.action_category === "D") {
       setSession((prev) => ({
         ...prev,
         scoring: {
@@ -431,6 +558,15 @@ export default function App() {
 
     setSession((prev) => {
       const promoted = createSnapshot(targetLayer, cloneRows(currentVersion.rows), 1, currentVersion.columns);
+      const qualifyReadiness =
+        qualifyEvent?.qualify_readiness ?? {
+          current_score: scoreSummary.score,
+          silver_threshold: 85,
+          gold_threshold: 92,
+          recommendation: "KEEP_CLEANING",
+          projected_penalty: null,
+        };
+
       return {
         ...prev,
         activeLayer: targetLayer,
@@ -444,8 +580,11 @@ export default function App() {
         previewState: null,
         scoring: {
           ...prev.scoring,
+          currentSpeed: Math.max(0, prev.scoring.currentSpeed + (qualifyEvent?.speed_delta ?? 0)),
+          currentFuel: Math.max(0, prev.scoring.currentFuel + (qualifyEvent?.fuel_delta ?? 0)),
           lastScoreEvent: {
-            ...(prev.scoring.lastScoreEvent ?? {
+            ...(qualifyEvent ??
+              prev.scoring.lastScoreEvent ?? {
               action_category: "A",
               action_type: "VALID_TRANSFORMATION",
               race_event: "QUALIFIED",
@@ -459,22 +598,39 @@ export default function App() {
               penalty_reason: null,
               hud_message: "Qualified successfully",
               visual_cue: "QUALIFIED",
-              qualify_readiness: {
-                current_score: scoreSummary.score,
-                silver_threshold: 85,
-                gold_threshold: 92,
-                recommendation: "KEEP_CLEANING",
-                projected_penalty: null,
-              },
+              qualify_readiness: qualifyReadiness,
             }),
-            hud_message: `Qualified into ${layerLabels[targetLayer]}.`,
+            quality_score: qualifyEvent?.quality_score ?? scoreSummary.score,
+            hud_message:
+              qualifyEvent?.action_type === "CLEAN_LAP"
+                ? `${qualifyEvent.hud_message} Qualified into ${layerLabels[targetLayer]}.`
+                : `Qualified into ${layerLabels[targetLayer]}.`,
+            visual_cue: qualifyEvent?.visual_cue ?? "QUALIFIED",
+            qualify_readiness: qualifyReadiness,
           },
         },
       };
     });
     setIsQualifyOpen(false);
     setSelectedQualifyTarget(null);
-    setMessage({ type: "success", text: `Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.` });
+    setMessage({
+      type: "success",
+      text:
+        qualifyEvent?.action_type === "CLEAN_LAP"
+          ? `${qualifyEvent.hud_message} Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`
+          : `Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`,
+    });
+    if (targetLayer === "gold") {
+      setRaceFinished({
+        layer: targetLayer,
+        score: qualifyEvent?.quality_score ?? scoreSummary.score,
+        message:
+          qualifyEvent?.action_type === "CLEAN_LAP"
+            ? "Perfect lap. The Gold table is locked in and the race is complete."
+            : "Gold qualification complete. The race is finished.",
+        isPerfectLap: qualifyEvent?.action_type === "CLEAN_LAP",
+      });
+    }
     setQualifyArmed((prev) => ({ ...prev, [targetLayer]: false }));
     setPendingScoreEvent(null);
   }
@@ -487,6 +643,7 @@ export default function App() {
     setPreviewSuccessFlash(false);
     setSelectedQualifyTarget(null);
     setPendingScoreEvent(null);
+    setRaceFinished(null);
   }
 
   return (
@@ -636,18 +793,36 @@ export default function App() {
 
         <section className="panel editor-panel">
           <div className="editor-tabs">
-            <button
-              className={editorMode === "monaco" ? "editor-tab active" : "editor-tab"}
-              onClick={() => setEditorMode("monaco")}
-            >
-              MONACO RUN
+            <div className="editor-tab-list">
+              <button
+                className={editorMode === "monaco" ? "editor-tab active" : "editor-tab"}
+                onClick={() => setEditorMode("monaco")}
+              >
+                MONACO RUN
+              </button>
+              <button
+                className={editorMode === "plain" ? "editor-tab active" : "editor-tab"}
+                onClick={() => setEditorMode("plain")}
+              >
+                PLAIN EDITOR
+              </button>
+            </div>
+            <button className="run-button editor-tab-run" onClick={runQuery} disabled={isRunning}>
+              <CarFront size={16} />
+              {isRunning ? "Running..." : "Run"}
             </button>
-            <button
-              className={editorMode === "plain" ? "editor-tab active" : "editor-tab"}
-              onClick={() => setEditorMode("plain")}
-            >
-              PLAIN EDITOR
-            </button>
+          </div>
+
+          <div className="query-preset-strip">
+            {queryPresets.map((preset) => (
+              <button
+                key={preset.label}
+                className="query-preset-button"
+                onClick={() => setSql(preset.sql)}
+              >
+                {preset.label}
+              </button>
+            ))}
           </div>
 
           <div className="editor-frame">
@@ -673,10 +848,6 @@ export default function App() {
 
           <div className="editor-footer">
             <div className="editor-hint">Run against the current confirmed table only. Confirm when the preview looks race-ready.</div>
-            <button className="run-button" onClick={runQuery} disabled={isRunning}>
-              <CarFront size={16} />
-              {isRunning ? "Running..." : "Run"}
-            </button>
           </div>
         </section>
 
@@ -779,6 +950,49 @@ export default function App() {
                 disabled={!selectedQualifyTarget}
               >
                 Proceed to {selectedQualifyTarget ? selectedQualifyTarget.toUpperCase() : "NEXT"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {raceFinished && (
+        <div className="modal-backdrop" onClick={() => setRaceFinished(null)}>
+          <div className="modal-card finish-card" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-head finish-head">
+              <div className="modal-title-wrap">
+                <Trophy size={18} />
+                <h3>Race Complete</h3>
+              </div>
+              <button className="close-button" onClick={() => setRaceFinished(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="finish-body">
+              <p className="section-kicker">Final Classification</p>
+              <h2>{raceFinished.isPerfectLap ? "Perfect Gold Finish" : "Gold Qualification Locked"}</h2>
+              <p className="finish-copy">{raceFinished.message}</p>
+              <div className="finish-stats">
+                <div className="finish-stat">
+                  <span>Final Layer</span>
+                  <strong>{layerLabels[raceFinished.layer]}</strong>
+                </div>
+                <div className="finish-stat">
+                  <span>Final Quality</span>
+                  <strong>{raceFinished.score}</strong>
+                </div>
+                <div className="finish-stat">
+                  <span>Race Event</span>
+                  <strong>{raceFinished.isPerfectLap ? "CLEAN_LAP" : "QUALIFIED"}</strong>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer finish-footer">
+              <button className="steel-button" onClick={() => setRaceFinished(null)}>
+                Review Final Grid
+              </button>
+              <button className="modal-qualify-button" onClick={resetGame}>
+                Restart Race
               </button>
             </div>
           </div>
