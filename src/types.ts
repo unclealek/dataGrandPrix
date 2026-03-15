@@ -49,3 +49,18 @@ export interface QueryResponse {
   rowCount?: number;
   error?: string;
 }
+
+export interface RaceRecord {
+  id: string;
+  race_key: string;
+  seed: number;
+  schema_version: string;
+  base_row_count: number;
+}
+
+export interface RaceSessionRecord {
+  id: string;
+  race_id: string;
+  active_layer: Layer;
+  current_score: number;
+}

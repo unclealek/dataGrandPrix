@@ -1,10 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Check, ChevronsLeftRight, Flag, History, RotateCcw, Undo2, X } from "lucide-react";
 import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from "@supabase/supabase-js";
 import { raceData, STARTER_SQL } from "./data";
 import { supabase } from "./lib/supabase";
-import type { Layer, QueryResponse, ScoreSummary, SessionState, TableRow, TableSnapshot } from "./types";
+import type {
+  Layer,
+  QueryResponse,
+  RaceRecord,
+  RaceSessionRecord,
+  ScoreSummary,
+  SessionState,
+  TableRow,
+  TableSnapshot,
+} from "./types";
 
 const layerOrder: Layer[] = ["bronze", "silver", "gold"];
 const layerLabels: Record<Layer, string> = {
@@ -80,6 +89,8 @@ export default function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [isQualifyOpen, setIsQualifyOpen] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [raceRecordId, setRaceRecordId] = useState<string | null>(null);
+  const [raceSessionId, setRaceSessionId] = useState<string | null>(null);
 
   const activeLayer = session.activeLayer;
   const activeState = session.layerState[activeLayer];
@@ -97,6 +108,99 @@ export default function App() {
       { label: "History Nodes", value: String(activeState.history.length) },
     ];
   }, [activeLayer, activeState.history.length, currentVersion?.rowCount, scoreSummary.score, session.race.seed]);
+
+  useEffect(() => {
+    if (!supabase || raceSessionId) {
+      return;
+    }
+
+    const client = supabase;
+    let cancelled = false;
+
+    async function ensurePersistence() {
+      const { data: existingRace, error: raceLookupError } = await client
+        .from("races")
+        .select("id, race_key, seed, schema_version, base_row_count")
+        .eq("race_key", session.race.race_id)
+        .maybeSingle<RaceRecord>();
+
+      if (raceLookupError) {
+        if (!cancelled) {
+          setMessage({ type: "error", text: raceLookupError.message });
+        }
+        return;
+      }
+
+      let raceId = existingRace?.id ?? null;
+
+      if (!raceId) {
+        const { data: createdRace, error: createRaceError } = await client
+          .from("races")
+          .insert({
+            race_key: session.race.race_id,
+            seed: session.race.seed,
+            schema_version: session.race.schema_version,
+            base_row_count: session.race.row_count,
+          })
+          .select("id, race_key, seed, schema_version, base_row_count")
+          .single<RaceRecord>();
+
+        if (createRaceError) {
+          if (!cancelled) {
+            setMessage({ type: "error", text: createRaceError.message });
+          }
+          return;
+        }
+
+        raceId = createdRace.id;
+      }
+
+      const { data: createdSession, error: createSessionError } = await client
+        .from("race_sessions")
+        .insert({
+          race_id: raceId,
+          active_layer: session.activeLayer,
+          current_score: scoreSummary.score,
+        })
+        .select("id, race_id, active_layer, current_score")
+        .single<RaceSessionRecord>();
+
+      if (createSessionError) {
+        if (!cancelled) {
+          setMessage({ type: "error", text: createSessionError.message });
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setRaceRecordId(raceId);
+        setRaceSessionId(createdSession.id);
+      }
+    }
+
+    ensurePersistence();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [raceSessionId, scoreSummary.score, session.activeLayer, session.race.race_id, session.race.row_count, session.race.schema_version, session.race.seed]);
+
+  useEffect(() => {
+    if (!supabase || !raceSessionId) {
+      return;
+    }
+
+    const client = supabase;
+
+    void client
+      .from("race_sessions")
+      .update({
+        active_layer: session.activeLayer,
+        current_score: scoreSummary.score,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", raceSessionId);
+  }, [raceSessionId, scoreSummary.score, session.activeLayer]);
 
   async function runQuery() {
     if (!currentVersion) {
@@ -134,6 +238,23 @@ export default function App() {
 
       if (!data?.success || !data.columns || !data.rows) {
         throw new Error(data?.error ?? "Query failed.");
+      }
+
+      const previewScore = summarizeScore(data.rows);
+
+      if (supabase && raceSessionId) {
+        const { error: attemptError } = await supabase.from("sql_attempts").insert({
+          session_id: raceSessionId,
+          layer: activeLayer,
+          version_number: activeState.currentIndex + 1,
+          sql_text: sql,
+          preview_row_count: data.rowCount ?? 0,
+          score_after: previewScore.score,
+        });
+
+        if (attemptError) {
+          throw new Error(attemptError.message);
+        }
       }
 
       setSession((prev) => ({
@@ -307,6 +428,8 @@ export default function App() {
               <span>Race ID: {session.race.race_id}</span>
               <span>Schema: {session.race.schema_version}</span>
               <span>Source Table: {session.race.table_name}</span>
+              <span>Race Row: {raceRecordId ?? "Pending"}</span>
+              <span>Session Row: {raceSessionId ?? "Pending"}</span>
               <span>Duplicates: {scoreSummary.duplicateRows}</span>
               <span>Null Cells: {scoreSummary.nullCells}</span>
               <span>Bad Emails: {scoreSummary.malformedEmails}</span>
