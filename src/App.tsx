@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { Check, ChevronsLeftRight, Flag, History, RotateCcw, Undo2, X } from "lucide-react";
+import { ArrowRight, CarFront, Check, Flag, History, Lock, RotateCcw, Trophy, Undo2, X, Zap } from "lucide-react";
 import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from "@supabase/supabase-js";
 import { raceData, STARTER_SQL } from "./data";
 import { supabase } from "./lib/supabase";
@@ -23,6 +23,11 @@ const layerLabels: Record<Layer, string> = {
 };
 
 const initialColumns = raceData.columns;
+const layerTheme: Record<Layer, { color: string; accentClass: string }> = {
+  bronze: { color: "#CD7F32", accentClass: "tier-bronze" },
+  silver: { color: "#C0C0C0", accentClass: "tier-silver" },
+  gold: { color: "#FFD700", accentClass: "tier-gold" },
+};
 
 function createSnapshot(layer: Layer, rows: TableRow[], version: number, columns = initialColumns): TableSnapshot {
   return {
@@ -91,6 +96,13 @@ export default function App() {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [raceRecordId, setRaceRecordId] = useState<string | null>(null);
   const [raceSessionId, setRaceSessionId] = useState<string | null>(null);
+  const [previewSuccessFlash, setPreviewSuccessFlash] = useState(false);
+  const [selectedQualifyTarget, setSelectedQualifyTarget] = useState<Layer | null>(null);
+  const [qualifyArmed, setQualifyArmed] = useState<Record<Layer, boolean>>({
+    bronze: false,
+    silver: false,
+    gold: false,
+  });
 
   const activeLayer = session.activeLayer;
   const activeState = session.layerState[activeLayer];
@@ -98,6 +110,7 @@ export default function App() {
 
   const qualifyTargets = layerOrder.filter((layer) => layerOrder.indexOf(layer) > layerOrder.indexOf(activeLayer));
   const scoreSummary = useMemo(() => summarizeScore(currentVersion?.rows ?? []), [currentVersion]);
+  const shouldPulseQualify = qualifyTargets.length > 0 && qualifyArmed[activeLayer];
 
   const telemetryStats = useMemo(() => {
     return [
@@ -108,6 +121,8 @@ export default function App() {
       { label: "History Nodes", value: String(activeState.history.length) },
     ];
   }, [activeLayer, activeState.history.length, currentVersion?.rowCount, scoreSummary.score, session.race.seed]);
+
+  const statusText = session.previewState ? "Ready to confirm" : isRunning ? "Executing" : "Racing";
 
   useEffect(() => {
     if (!supabase || raceSessionId) {
@@ -202,6 +217,15 @@ export default function App() {
       .eq("id", raceSessionId);
   }, [raceSessionId, scoreSummary.score, session.activeLayer]);
 
+  useEffect(() => {
+    if (!previewSuccessFlash) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setPreviewSuccessFlash(false), 800);
+    return () => window.clearTimeout(timeoutId);
+  }, [previewSuccessFlash]);
+
   async function runQuery() {
     if (!currentVersion) {
       return;
@@ -272,6 +296,7 @@ export default function App() {
         type: "success",
         text: `Query executed successfully. ${data.rowCount ?? 0} rows returned.`,
       });
+      setPreviewSuccessFlash(true);
     } catch (error) {
       setMessage({
         type: "error",
@@ -312,6 +337,7 @@ export default function App() {
       };
     });
     setMessage({ type: "success", text: "Preview confirmed into the active table." });
+    setQualifyArmed((prev) => ({ ...prev, [activeLayer]: true }));
   }
 
   function reverseCurrentLayer() {
@@ -374,13 +400,18 @@ export default function App() {
       };
     });
     setIsQualifyOpen(false);
+    setSelectedQualifyTarget(null);
     setMessage({ type: "success", text: `Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.` });
+    setQualifyArmed((prev) => ({ ...prev, [targetLayer]: false }));
   }
 
   function resetGame() {
     setSession(createInitialSession());
     setSql(STARTER_SQL);
     setMessage({ type: "success", text: "Session reset to the Bronze starting grid." });
+    setQualifyArmed({ bronze: false, silver: false, gold: false });
+    setPreviewSuccessFlash(false);
+    setSelectedQualifyTarget(null);
   }
 
   return (
@@ -393,15 +424,24 @@ export default function App() {
               <Flag size={18} />
             </div>
             <div>
-              <p className="eyebrow">Telemetry Cleaning Grid</p>
+              <p className="eyebrow">SQL Cleaning Dashboard v1.0.4</p>
               <h1>Data Grand Prix</h1>
             </div>
           </div>
           <div className="topbar-actions">
-            <span className={`layer-pill layer-${activeLayer}`}>{layerLabels[activeLayer]}</span>
+            <div className="status-cluster">
+              <div className="status-pill">
+                <span>Current Layer</span>
+                <strong className={`layer-${activeLayer}`}>{activeLayer.toUpperCase()}</strong>
+              </div>
+              <div className="status-pill">
+                <span>Status</span>
+                <strong className={message?.type === "error" ? "status-error" : "status-live"}>{statusText}</strong>
+              </div>
+            </div>
             <button className="reset-button" onClick={resetGame}>
               <RotateCcw size={18} />
-              Reset
+              Reset Session
             </button>
           </div>
         </header>
@@ -436,42 +476,52 @@ export default function App() {
             </div>
 
           <div className="grid-panels">
-            <div className="table-card">
-              <div className="card-heading">
-                <h3>{layerLabels[activeLayer].replace("Table", "Current")}</h3>
+            <div className="source-section">
+              <div className="section-subhead">
+                <div>
+                  <p className="section-kicker">Source Grid</p>
+                  <h3>{layerLabels[activeLayer].replace("Table", "Current")}</h3>
+                </div>
                 <span>{currentVersion?.label ?? "No version"}</span>
               </div>
-              <DataTable snapshot={currentVersion} emptyCopy="No confirmed table for this layer yet." />
+              <div className="table-card source-table-card">
+                <DataTable snapshot={currentVersion} emptyCopy="No confirmed table for this layer yet." emptyMode="table" />
+              </div>
             </div>
 
-            <div className="panel-arrow">
-              <ChevronsLeftRight size={34} />
-            </div>
-
-            <div className="table-card">
-              <div className="card-heading">
-                <h3>Applied Clean</h3>
+            <div className="executed-run-section">
+              <div className="section-subhead executed-run-head">
+                <div>
+                  <p className="section-kicker">Executed Run</p>
+                  <h3>Applied Clean</h3>
+                </div>
                 <span>{session.previewState ? "Preview ready" : "Awaiting run"}</span>
               </div>
-              <DataTable snapshot={session.previewState} emptyCopy="Run SQL to generate a right-side preview." />
-              <div className="preview-footer">
-                {message && (
-                  <div className={`feedback ${message.type}`}>
-                    {message.type === "success" ? <Check size={16} /> : <X size={16} />}
-                    <span>{message.text}</span>
+              <div className={`table-card applied-clean-card${previewSuccessFlash ? " success-flash" : ""}`}>
+                <div className="card-heading">
+                  <h3>Execution Output</h3>
+                  <span>{session.previewState ? "Latest SQL result" : "Run SQL to populate"}</span>
+                </div>
+                <DataTable snapshot={session.previewState} emptyCopy="Run SQL to generate a right-side preview." emptyMode="message" />
+                <div className="preview-footer">
+                  {message && (
+                    <div className={`feedback ${message.type}`}>
+                      {message.type === "success" ? <Check size={16} /> : <X size={16} />}
+                      <span>{message.text}</span>
+                    </div>
+                  )}
+                  <div className="preview-actions">
+                    <button className="gold-button" onClick={confirmPreview} disabled={!session.previewState}>
+                      Confirm
+                    </button>
+                    <button className="steel-button" onClick={reverseCurrentLayer} disabled={activeState.currentIndex <= 0}>
+                      <Undo2 size={16} />
+                      Reverse
+                    </button>
+                    <button className="ghost-button" onClick={discardPreview} disabled={!session.previewState}>
+                      Discard
+                    </button>
                   </div>
-                )}
-                <div className="preview-actions">
-                  <button className="gold-button" onClick={confirmPreview} disabled={!session.previewState}>
-                    Confirm
-                  </button>
-                  <button className="steel-button" onClick={reverseCurrentLayer} disabled={activeState.currentIndex <= 0}>
-                    <Undo2 size={16} />
-                    Reverse
-                  </button>
-                  <button className="ghost-button" onClick={discardPreview} disabled={!session.previewState}>
-                    Discard
-                  </button>
                 </div>
               </div>
             </div>
@@ -502,13 +552,13 @@ export default function App() {
               className={editorMode === "monaco" ? "editor-tab active" : "editor-tab"}
               onClick={() => setEditorMode("monaco")}
             >
-              Monaco Run
+              MONACO RUN
             </button>
             <button
               className={editorMode === "plain" ? "editor-tab active" : "editor-tab"}
               onClick={() => setEditorMode("plain")}
             >
-              Plain Editor
+              PLAIN EDITOR
             </button>
           </div>
 
@@ -536,60 +586,113 @@ export default function App() {
           <div className="editor-footer">
             <div className="editor-hint">Run against the current confirmed table only. Confirm when the preview looks race-ready.</div>
             <button className="run-button" onClick={runQuery} disabled={isRunning}>
+              <CarFront size={16} />
               {isRunning ? "Running..." : "Run"}
             </button>
           </div>
         </section>
 
         <section className="panel qualify-panel">
-          <div>
-            <p className="section-kicker">Promotion Gate</p>
+          <div className="qualify-panel-copy">
+            <p className="section-kicker">Advance the Race</p>
             <h2>Qualify the Clean Data</h2>
             <p className="qualify-copy">
               Promote the current confirmed dataset upward. History stays isolated by layer and previous layers become inaccessible after qualification.
             </p>
           </div>
-          <button className="qualify-button" onClick={() => setIsQualifyOpen(true)} disabled={qualifyTargets.length === 0}>
-            Qualify
+            <button
+              className={shouldPulseQualify ? "qualify-button qualify-ready" : "qualify-button"}
+            onClick={() => {
+              setSelectedQualifyTarget(qualifyTargets[0] ?? null);
+              setIsQualifyOpen(true);
+            }}
+            disabled={qualifyTargets.length === 0}
+          >
+            <Trophy size={18} />
+            Qualify Data
+            <ArrowRight size={18} />
           </button>
         </section>
+
+        <footer className="app-footer">
+          <div className="footer-stat">
+            <span>Active Database</span>
+            <strong>{session.race.table_name.toUpperCase()}</strong>
+          </div>
+          <div className="footer-stat">
+            <span>Latency</span>
+            <strong className="status-live">{isRunning ? "RUNNING" : "0.42 MS"}</strong>
+          </div>
+          <div className="footer-stat footer-credit">
+            <span>Built for data engineers by Blink Engineer</span>
+          </div>
+        </footer>
       </main>
 
       {isQualifyOpen && (
         <div className="modal-backdrop" onClick={() => setIsQualifyOpen(false)}>
           <div className="modal-card" onClick={(event) => event.stopPropagation()}>
             <div className="modal-head">
-              <div>
-                <p className="section-kicker">Data Grand Prix</p>
+              <div className="modal-title-wrap">
+                <Trophy size={18} />
                 <h3>Qualify the Clean Data</h3>
               </div>
               <button className="close-button" onClick={() => setIsQualifyOpen(false)}>
                 <X size={18} />
               </button>
             </div>
-            <p className="modal-copy">Select the table layer to qualify to:</p>
+            <p className="modal-copy">
+              Select the table layer to qualify the current dataset to. This will lock current history and start a new state tracking for the selected layer.
+            </p>
             <div className="layer-options">
               {layerOrder.map((layer) => {
                 const isCurrent = layer === activeLayer;
                 const allowed = qualifyTargets.includes(layer);
+                const theme = layerTheme[layer];
                 return (
                   <button
                     key={layer}
-                    className={allowed ? "layer-option" : "layer-option disabled"}
+                    className={`layer-option ${theme.accentClass}${allowed ? "" : " disabled"}${isCurrent ? " current" : ""}${
+                      selectedQualifyTarget === layer ? " selected" : ""
+                    }`}
                     disabled={!allowed}
-                    onClick={() => qualifyToLayer(layer)}
+                    onClick={() => setSelectedQualifyTarget(layer)}
                   >
-                    <span className="radio-dot" />
-                    <span>{layerLabels[layer]}</span>
-                    {isCurrent && <small>Current Level</small>}
-                    {!isCurrent && !allowed && <small>Unavailable</small>}
+                    <span className="layer-option-radio" aria-hidden="true" />
+                    <span className="layer-option-title">
+                      <strong style={{ color: theme.color }}>{layerLabels[layer]}</strong>
+                      <small>{isCurrent ? "Current level" : allowed ? "Promotion available" : "Unavailable from current layer"}</small>
+                    </span>
+                    <span className="layer-option-end">
+                      {isCurrent ? (
+                        <small>Current Level</small>
+                      ) : !allowed ? (
+                        <Lock size={15} />
+                      ) : (
+                        <span className="layer-option-badge" style={{ color: theme.color, borderColor: `${theme.color}55` }}>
+                          {layer.toUpperCase()}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
             </div>
-            <p className="restriction-copy">
-              Restriction: reverse and history access apply only within the currently active qualified layer.
-            </p>
+            <div className="restriction-banner">
+              <Zap size={16} />
+              <p className="restriction-copy">
+                <strong>Restrictions:</strong> You can only reverse operations within the qualified table layer. You cannot go backward once you select a higher layer.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="modal-qualify-button"
+                onClick={() => selectedQualifyTarget && qualifyToLayer(selectedQualifyTarget)}
+                disabled={!selectedQualifyTarget}
+              >
+                Proceed to {selectedQualifyTarget ? selectedQualifyTarget.toUpperCase() : "NEXT"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -600,12 +703,22 @@ export default function App() {
 function DataTable({
   snapshot,
   emptyCopy,
+  emptyMode = "table",
 }: {
   snapshot: TableSnapshot | null;
   emptyCopy: string;
+  emptyMode?: "table" | "message";
 }) {
   if (!snapshot) {
-    return <div className="table-empty">{emptyCopy}</div>;
+    if (emptyMode === "message") {
+      return <div className="table-empty table-empty-message">{emptyCopy}</div>;
+    }
+
+    return (
+      <div className="table-empty">
+        <div className="table-empty-copy">{emptyCopy}</div>
+      </div>
+    );
   }
 
   return (
