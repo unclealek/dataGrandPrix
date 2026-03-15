@@ -3,6 +3,7 @@ import Editor from "@monaco-editor/react";
 import { ArrowRight, CarFront, Check, Flag, History, Lock, RotateCcw, Trophy, Undo2, X, Zap } from "lucide-react";
 import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from "@supabase/supabase-js";
 import { raceData, STARTER_SQL } from "./data";
+import { applyConfirmedScore, createInitialScoringState, scorePreview, scoreQualify, summarizeScore } from "./lib/scoring";
 import { supabase } from "./lib/supabase";
 import type {
   Layer,
@@ -10,6 +11,7 @@ import type {
   RaceRecord,
   RaceSessionRecord,
   ScoreSummary,
+  ScoreEvent,
   SessionState,
   TableRow,
   TableSnapshot,
@@ -52,39 +54,12 @@ function createInitialSession(): SessionState {
     },
     previewState: null,
     race: raceData,
+    scoring: createInitialScoringState(raceData.rows, raceData.columns),
   };
 }
 
 function cloneRows(rows: TableRow[]): TableRow[] {
   return rows.map((row) => ({ ...row }));
-}
-
-function summarizeScore(rows: TableRow[]): ScoreSummary {
-  const normalizedRows = rows.map((row) => JSON.stringify(row));
-  const duplicateRows = normalizedRows.length - new Set(normalizedRows).size;
-  let nullCells = 0;
-  let malformedEmails = 0;
-
-  for (const row of rows) {
-    for (const value of Object.values(row)) {
-      if (value === null || value === "") {
-        nullCells += 1;
-      }
-    }
-
-    const email = String(row.email ?? "").trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      malformedEmails += 1;
-    }
-  }
-
-  const penalty = duplicateRows * 8 + nullCells * 2 + malformedEmails * 4;
-  return {
-    score: Math.max(0, 100 - penalty),
-    duplicateRows,
-    nullCells,
-    malformedEmails,
-  };
 }
 
 export default function App() {
@@ -98,6 +73,7 @@ export default function App() {
   const [raceSessionId, setRaceSessionId] = useState<string | null>(null);
   const [previewSuccessFlash, setPreviewSuccessFlash] = useState(false);
   const [selectedQualifyTarget, setSelectedQualifyTarget] = useState<Layer | null>(null);
+  const [pendingScoreEvent, setPendingScoreEvent] = useState<ScoreEvent | null>(null);
   const [qualifyArmed, setQualifyArmed] = useState<Record<Layer, boolean>>({
     bronze: false,
     silver: false,
@@ -109,18 +85,37 @@ export default function App() {
   const currentVersion = activeState.history[activeState.currentIndex] ?? null;
 
   const qualifyTargets = layerOrder.filter((layer) => layerOrder.indexOf(layer) > layerOrder.indexOf(activeLayer));
-  const scoreSummary = useMemo(() => summarizeScore(currentVersion?.rows ?? []), [currentVersion]);
+  const scoreSummary = useMemo<ScoreSummary>(
+    () =>
+      summarizeScore(
+        currentVersion?.rows ?? [],
+        currentVersion?.columns ?? raceData.columns,
+        session.scoring.baselineSummary,
+      ),
+    [currentVersion, session.scoring.baselineSummary],
+  );
   const shouldPulseQualify = qualifyTargets.length > 0 && qualifyArmed[activeLayer];
+  const activeScoreEvent = pendingScoreEvent ?? session.scoring.lastScoreEvent;
 
   const telemetryStats = useMemo(() => {
     return [
       { label: "Active Layer", value: activeLayer.toUpperCase() },
       { label: "Seed", value: String(session.race.seed) },
       { label: "Confirmed Rows", value: String(currentVersion?.rowCount ?? 0) },
-      { label: "Score", value: `${scoreSummary.score}` },
+      { label: "Quality", value: `${scoreSummary.score}` },
+      { label: "Speed", value: `${session.scoring.currentSpeed}` },
+      { label: "Fuel", value: `${session.scoring.currentFuel}` },
       { label: "History Nodes", value: String(activeState.history.length) },
     ];
-  }, [activeLayer, activeState.history.length, currentVersion?.rowCount, scoreSummary.score, session.race.seed]);
+  }, [
+    activeLayer,
+    activeState.history.length,
+    currentVersion?.rowCount,
+    scoreSummary.score,
+    session.race.seed,
+    session.scoring.currentFuel,
+    session.scoring.currentSpeed,
+  ]);
 
   const statusText = session.previewState ? "Ready to confirm" : isRunning ? "Executing" : "Racing";
 
@@ -172,10 +167,10 @@ export default function App() {
 
       const { data: createdSession, error: createSessionError } = await client
         .from("race_sessions")
-        .insert({
-          race_id: raceId,
-          active_layer: session.activeLayer,
-          current_score: scoreSummary.score,
+          .insert({
+            race_id: raceId,
+            active_layer: session.activeLayer,
+            current_score: scoreSummary.score,
         })
         .select("id, race_id, active_layer, current_score")
         .single<RaceSessionRecord>();
@@ -264,7 +259,16 @@ export default function App() {
         throw new Error(data?.error ?? "Query failed.");
       }
 
-      const previewScore = summarizeScore(data.rows);
+      const previewScore = scorePreview({
+        sql,
+        previousRows: currentVersion.rows,
+        previousColumns: currentVersion.columns,
+        nextRows: data.rows,
+        nextColumns: data.columns,
+        scoringState: session.scoring,
+        executionSuccess: true,
+        errorMessage: null,
+      });
 
       if (supabase && raceSessionId) {
         const { error: attemptError } = await supabase.from("sql_attempts").insert({
@@ -273,7 +277,7 @@ export default function App() {
           version_number: activeState.currentIndex + 1,
           sql_text: sql,
           preview_row_count: data.rowCount ?? 0,
-          score_after: previewScore.score,
+          score_after: previewScore.quality_score,
         });
 
         if (attemptError) {
@@ -292,12 +296,24 @@ export default function App() {
           createdAt: new Date().toISOString(),
         },
       }));
+      setPendingScoreEvent(previewScore);
       setMessage({
         type: "success",
-        text: `Query executed successfully. ${data.rowCount ?? 0} rows returned.`,
+        text: `${previewScore.hud_message} ${data.rowCount ?? 0} rows returned.`,
       });
       setPreviewSuccessFlash(true);
     } catch (error) {
+      const failureScore = scorePreview({
+        sql,
+        previousRows: currentVersion.rows,
+        previousColumns: currentVersion.columns,
+        nextRows: currentVersion.rows,
+        nextColumns: currentVersion.columns,
+        scoringState: session.scoring,
+        executionSuccess: false,
+        errorMessage: error instanceof Error ? error.message : "Query execution failed.",
+      });
+      setPendingScoreEvent(failureScore);
       setMessage({
         type: "error",
         text: error instanceof Error ? error.message : "Query execution failed.",
@@ -308,7 +324,7 @@ export default function App() {
   }
 
   function confirmPreview() {
-    if (!session.previewState) {
+    if (!session.previewState || !pendingScoreEvent) {
       return;
     }
 
@@ -323,6 +339,13 @@ export default function App() {
       );
 
       const nextHistory = [...currentLayerState.history, confirmedSnapshot];
+      const nextScoring = applyConfirmedScore(
+        prev.scoring,
+        pendingScoreEvent,
+        sql,
+        confirmedSnapshot.rows,
+        confirmedSnapshot.columns,
+      );
 
       return {
         ...prev,
@@ -334,9 +357,11 @@ export default function App() {
           },
         },
         previewState: null,
+        scoring: nextScoring,
       };
     });
-    setMessage({ type: "success", text: "Preview confirmed into the active table." });
+    setPendingScoreEvent(null);
+    setMessage({ type: "success", text: `${pendingScoreEvent.hud_message} Preview confirmed into the active table.` });
     setQualifyArmed((prev) => ({ ...prev, [activeLayer]: true }));
   }
 
@@ -356,6 +381,7 @@ export default function App() {
       },
       previewState: null,
     }));
+    setPendingScoreEvent(null);
     setMessage({ type: "success", text: "Moved back one confirmed version in this layer." });
   }
 
@@ -371,16 +397,35 @@ export default function App() {
       },
       previewState: null,
     }));
+    setPendingScoreEvent(null);
     setMessage({ type: "success", text: "Restored a previous confirmed state." });
   }
 
   function discardPreview() {
     setSession((prev) => ({ ...prev, previewState: null }));
+    setPendingScoreEvent(null);
     setMessage({ type: "success", text: "Preview discarded." });
   }
 
   function qualifyToLayer(targetLayer: Layer) {
     if (!currentVersion) {
+      return;
+    }
+
+    const qualifyEvent = scoreQualify(targetLayer, session.scoring);
+    if (qualifyEvent) {
+      setSession((prev) => ({
+        ...prev,
+        scoring: {
+          ...prev.scoring,
+          currentSpeed: Math.max(0, prev.scoring.currentSpeed + qualifyEvent.speed_delta),
+          currentFuel: Math.max(0, prev.scoring.currentFuel + qualifyEvent.fuel_delta),
+          lastScoreEvent: qualifyEvent,
+        },
+      }));
+      setPendingScoreEvent(null);
+      setMessage({ type: "error", text: qualifyEvent.hud_message });
+      setIsQualifyOpen(false);
       return;
     }
 
@@ -397,12 +442,41 @@ export default function App() {
           },
         },
         previewState: null,
+        scoring: {
+          ...prev.scoring,
+          lastScoreEvent: {
+            ...(prev.scoring.lastScoreEvent ?? {
+              action_category: "A",
+              action_type: "VALID_TRANSFORMATION",
+              race_event: "QUALIFIED",
+              speed_delta: 0,
+              fuel_delta: 0,
+              momentum_active: false,
+              quality_score: scoreSummary.score,
+              rows_affected: 0,
+              rows_dropped: 0,
+              locked_errors: [],
+              penalty_reason: null,
+              hud_message: "Qualified successfully",
+              visual_cue: "QUALIFIED",
+              qualify_readiness: {
+                current_score: scoreSummary.score,
+                silver_threshold: 85,
+                gold_threshold: 92,
+                recommendation: "KEEP_CLEANING",
+                projected_penalty: null,
+              },
+            }),
+            hud_message: `Qualified into ${layerLabels[targetLayer]}.`,
+          },
+        },
       };
     });
     setIsQualifyOpen(false);
     setSelectedQualifyTarget(null);
     setMessage({ type: "success", text: `Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.` });
     setQualifyArmed((prev) => ({ ...prev, [targetLayer]: false }));
+    setPendingScoreEvent(null);
   }
 
   function resetGame() {
@@ -412,6 +486,7 @@ export default function App() {
     setQualifyArmed({ bronze: false, silver: false, gold: false });
     setPreviewSuccessFlash(false);
     setSelectedQualifyTarget(null);
+    setPendingScoreEvent(null);
   }
 
   return (
@@ -473,6 +548,9 @@ export default function App() {
               <span>Duplicates: {scoreSummary.duplicateRows}</span>
               <span>Null Cells: {scoreSummary.nullCells}</span>
               <span>Bad Emails: {scoreSummary.malformedEmails}</span>
+              <span>Clean Rows: {scoreSummary.cleanRows}</span>
+              <span>Action: {activeScoreEvent?.action_type ?? "NONE"}</span>
+              <span>Event: {activeScoreEvent?.race_event ?? "GRID_READY"}</span>
             </div>
 
           <div className="grid-panels">
@@ -508,6 +586,16 @@ export default function App() {
                     <div className={`feedback ${message.type}`}>
                       {message.type === "success" ? <Check size={16} /> : <X size={16} />}
                       <span>{message.text}</span>
+                    </div>
+                  )}
+                  {activeScoreEvent && (
+                    <div className="feedback success">
+                      <Zap size={16} />
+                      <span>
+                        {activeScoreEvent.action_type} | speed {activeScoreEvent.speed_delta >= 0 ? "+" : ""}
+                        {activeScoreEvent.speed_delta} | fuel {activeScoreEvent.fuel_delta} | quality{" "}
+                        {activeScoreEvent.quality_score}
+                      </span>
                     </div>
                   )}
                   <div className="preview-actions">
@@ -642,7 +730,7 @@ export default function App() {
               </button>
             </div>
             <p className="modal-copy">
-              Select the table layer to qualify the current dataset to. This will lock current history and start a new state tracking for the selected layer.
+              Select the table layer to qualify the current dataset to. Silver needs {activeScoreEvent?.qualify_readiness.silver_threshold ?? 85}% quality and Gold needs {activeScoreEvent?.qualify_readiness.gold_threshold ?? 92}%.
             </p>
             <div className="layer-options">
               {layerOrder.map((layer) => {
