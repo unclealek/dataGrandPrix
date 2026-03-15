@@ -261,8 +261,24 @@ h3 {
 
 .telemetry-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 12px;
+}
+
+.race-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.race-meta span {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 13, 19, 0.38);
+  color: var(--muted);
+  font-size: 0.84rem;
+  letter-spacing: 0.05em;
 }
 
 .stat-card {

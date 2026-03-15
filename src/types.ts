@@ -13,6 +13,23 @@ export interface TableSnapshot {
   createdAt: string;
 }
 
+export interface RaceDataset {
+  race_id: string;
+  seed: number;
+  schema_version: string;
+  table_name: string;
+  columns: string[];
+  row_count: number;
+  rows: TableRow[];
+}
+
+export interface ScoreSummary {
+  score: number;
+  duplicateRows: number;
+  nullCells: number;
+  malformedEmails: number;
+}
+
 export interface LayerState {
   history: TableSnapshot[];
   currentIndex: number;
@@ -22,6 +39,7 @@ export interface SessionState {
   activeLayer: Layer;
   layerState: Record<Layer, LayerState>;
   previewState: TableSnapshot | null;
+  race: RaceDataset;
 }
 
 export interface QueryResponse {

@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { Check, ChevronsLeftRight, Flag, History, RotateCcw, Undo2, X } from "lucide-react";
 import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from "@supabase/supabase-js";
-import { rawDataset, STARTER_SQL } from "./data";
+import { raceData, STARTER_SQL } from "./data";
 import { supabase } from "./lib/supabase";
-import type { Layer, QueryResponse, SessionState, TableRow, TableSnapshot } from "./types";
+import type { Layer, QueryResponse, ScoreSummary, SessionState, TableRow, TableSnapshot } from "./types";
 
 const layerOrder: Layer[] = ["bronze", "silver", "gold"];
 const layerLabels: Record<Layer, string> = {
@@ -13,7 +13,7 @@ const layerLabels: Record<Layer, string> = {
   gold: "Gold Table",
 };
 
-const initialColumns = Object.keys(rawDataset[0] ?? {});
+const initialColumns = raceData.columns;
 
 function createSnapshot(layer: Layer, rows: TableRow[], version: number, columns = initialColumns): TableSnapshot {
   return {
@@ -27,7 +27,7 @@ function createSnapshot(layer: Layer, rows: TableRow[], version: number, columns
 }
 
 function createInitialSession(): SessionState {
-  const bronzeBase = createSnapshot("bronze", rawDataset, 1);
+  const bronzeBase = createSnapshot("bronze", raceData.rows, 1, raceData.columns);
 
   return {
     activeLayer: "bronze",
@@ -37,11 +37,40 @@ function createInitialSession(): SessionState {
       gold: { history: [], currentIndex: -1 },
     },
     previewState: null,
+    race: raceData,
   };
 }
 
 function cloneRows(rows: TableRow[]): TableRow[] {
   return rows.map((row) => ({ ...row }));
+}
+
+function summarizeScore(rows: TableRow[]): ScoreSummary {
+  const normalizedRows = rows.map((row) => JSON.stringify(row));
+  const duplicateRows = normalizedRows.length - new Set(normalizedRows).size;
+  let nullCells = 0;
+  let malformedEmails = 0;
+
+  for (const row of rows) {
+    for (const value of Object.values(row)) {
+      if (value === null || value === "") {
+        nullCells += 1;
+      }
+    }
+
+    const email = String(row.email ?? "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      malformedEmails += 1;
+    }
+  }
+
+  const penalty = duplicateRows * 8 + nullCells * 2 + malformedEmails * 4;
+  return {
+    score: Math.max(0, 100 - penalty),
+    duplicateRows,
+    nullCells,
+    malformedEmails,
+  };
 }
 
 export default function App() {
@@ -57,14 +86,17 @@ export default function App() {
   const currentVersion = activeState.history[activeState.currentIndex] ?? null;
 
   const qualifyTargets = layerOrder.filter((layer) => layerOrder.indexOf(layer) > layerOrder.indexOf(activeLayer));
+  const scoreSummary = useMemo(() => summarizeScore(currentVersion?.rows ?? []), [currentVersion]);
 
   const telemetryStats = useMemo(() => {
     return [
       { label: "Active Layer", value: activeLayer.toUpperCase() },
+      { label: "Seed", value: String(session.race.seed) },
       { label: "Confirmed Rows", value: String(currentVersion?.rowCount ?? 0) },
+      { label: "Score", value: `${scoreSummary.score}` },
       { label: "History Nodes", value: String(activeState.history.length) },
     ];
-  }, [activeLayer, activeState.history.length, currentVersion?.rowCount]);
+  }, [activeLayer, activeState.history.length, currentVersion?.rowCount, scoreSummary.score, session.race.seed]);
 
   async function runQuery() {
     if (!currentVersion) {
@@ -208,6 +240,7 @@ export default function App() {
     setSession((prev) => {
       const promoted = createSnapshot(targetLayer, cloneRows(currentVersion.rows), 1, currentVersion.columns);
       return {
+        ...prev,
         activeLayer: targetLayer,
         layerState: {
           ...prev.layerState,
@@ -255,11 +288,11 @@ export default function App() {
         <div className="hazard-line" />
 
         <section className="panel telemetry-panel">
-          <div className="section-header">
-            <div>
-              <p className="section-kicker">Telemetry</p>
-              <h2>Current Cleaning Run</h2>
-            </div>
+            <div className="section-header">
+              <div>
+                <p className="section-kicker">Telemetry</p>
+                <h2>Current Cleaning Run</h2>
+              </div>
             <div className="telemetry-stats">
               {telemetryStats.map((stat) => (
                 <div key={stat.label} className="stat-card">
@@ -268,7 +301,16 @@ export default function App() {
                 </div>
               ))}
             </div>
-          </div>
+            </div>
+
+            <div className="race-meta">
+              <span>Race ID: {session.race.race_id}</span>
+              <span>Schema: {session.race.schema_version}</span>
+              <span>Source Table: {session.race.table_name}</span>
+              <span>Duplicates: {scoreSummary.duplicateRows}</span>
+              <span>Null Cells: {scoreSummary.nullCells}</span>
+              <span>Bad Emails: {scoreSummary.malformedEmails}</span>
+            </div>
 
           <div className="grid-panels">
             <div className="table-card">

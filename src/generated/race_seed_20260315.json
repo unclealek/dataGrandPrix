@@ -1,0 +1,219 @@
+{
+  "race_id": "race-20260315",
+  "seed": 20260315,
+  "schema_version": "v1",
+  "table_name": "raw_table",
+  "columns": [
+    "id",
+    "first_name",
+    "last_name",
+    "email",
+    "country",
+    "signup_date",
+    "amount",
+    "status"
+  ],
+  "row_count": 20,
+  "rows": [
+    {
+      "id": 1,
+      "first_name": "JACK",
+      "last_name": "Moore",
+      "email": "jack.moore@email.com",
+      "country": "USA",
+      "signup_date": "01/15/2024",
+      "amount": "$1,424.98",
+      "status": "active"
+    },
+    {
+      "id": 2,
+      "first_name": "Henry  ",
+      "last_name": "White",
+      "email": "henry.white@",
+      "country": "united states",
+      "signup_date": "2024-01-16",
+      "amount": null,
+      "status": "Active"
+    },
+    {
+      "id": 3,
+      "first_name": "GRACE",
+      "last_name": "Johnson",
+      "email": "GRACE.JOHNSON@EMAIL.COM",
+      "country": "uk",
+      "signup_date": "01/17/2024",
+      "amount": "$1,603.59",
+      "status": "active"
+    },
+    {
+      "id": 4,
+      "first_name": "Grace",
+      "last_name": "Jackson",
+      "email": "grace.jackson@",
+      "country": "australia",
+      "signup_date": "01/18/2024",
+      "amount": "2,022.37",
+      "status": "inactive"
+    },
+    {
+      "id": 5,
+      "first_name": "olivia",
+      "last_name": "Johnson",
+      "email": "OLIVIA.JOHNSON@EMAIL.COM",
+      "country": "new zealand",
+      "signup_date": "01/19/2024",
+      "amount": "2438.93",
+      "status": "ACTIVE"
+    },
+    {
+      "id": 6,
+      "first_name": "Olivia",
+      "last_name": "  Taylor",
+      "email": "olivia.taylor@email.com",
+      "country": "new zealand",
+      "signup_date": "01/20/2024",
+      "amount": "1320",
+      "status": "active"
+    },
+    {
+      "id": 7,
+      "first_name": "david",
+      "last_name": "davis",
+      "email": " david.davis@email.com ",
+      "country": "canada",
+      "signup_date": "2024-01-21",
+      "amount": "$2,010.25",
+      "status": "inactive"
+    },
+    {
+      "id": 8,
+      "first_name": "david",
+      "last_name": "anderson",
+      "email": "david.anderson@email.com",
+      "country": "canada",
+      "signup_date": "01/22/2024",
+      "amount": "$1,000.51",
+      "status": "INACTIVE"
+    },
+    {
+      "id": 9,
+      "first_name": "noah",
+      "last_name": "Martin",
+      "email": "noah.martin@email",
+      "country": "USA",
+      "signup_date": "01/23/2024",
+      "amount": "3473.42",
+      "status": "INACTIVE"
+    },
+    {
+      "id": 10,
+      "first_name": "  Liam",
+      "last_name": "anderson",
+      "email": " liam.anderson@email.com ",
+      "country": "Canada",
+      "signup_date": "2024-01-24",
+      "amount": null,
+      "status": "Active"
+    },
+    {
+      "id": 11,
+      "first_name": "GRACE",
+      "last_name": "TAYLOR",
+      "email": "GRACE.TAYLOR@EMAIL.COM",
+      "country": "United Kingdom",
+      "signup_date": "2024-01-25",
+      "amount": "3,779.81",
+      "status": "active"
+    },
+    {
+      "id": 12,
+      "first_name": "  Emma",
+      "last_name": "Johnson  ",
+      "email": "EMMA.JOHNSON@EMAIL.COM",
+      "country": "Canada",
+      "signup_date": "01/26/2024",
+      "amount": "4,444.15",
+      "status": "Active"
+    },
+    {
+      "id": 13,
+      "first_name": "NOAH",
+      "last_name": "Martin",
+      "email": "noah.martin@",
+      "country": "canada",
+      "signup_date": "01/27/2024",
+      "amount": "4961.92",
+      "status": "Inactive"
+    },
+    {
+      "id": 14,
+      "first_name": null,
+      "last_name": "garcia",
+      "email": "emma.garcia@email.com",
+      "country": "new zealand",
+      "signup_date": "2024-01-28",
+      "amount": "$2,680.15",
+      "status": "inactive"
+    },
+    {
+      "id": 15,
+      "first_name": "BOB",
+      "last_name": "harris",
+      "email": "bob.harris@",
+      "country": "USA",
+      "signup_date": "01/29/2024",
+      "amount": "$4,423.37",
+      "status": "Inactive"
+    },
+    {
+      "id": 16,
+      "first_name": "Mia  ",
+      "last_name": "  Anderson",
+      "email": "MIA.ANDERSON@EMAIL.COM",
+      "country": "canada",
+      "signup_date": "2024-01-30",
+      "amount": "$1,063.50",
+      "status": "Inactive"
+    },
+    {
+      "id": 17,
+      "first_name": null,
+      "last_name": "ANDERSON",
+      "email": " olivia.anderson@email.com ",
+      "country": null,
+      "signup_date": "2024-01-31",
+      "amount": "3496.14",
+      "status": "Inactive"
+    },
+    {
+      "id": 18,
+      "first_name": "Bob",
+      "last_name": "smith",
+      "email": "bob.smith@email",
+      "country": "Australia",
+      "signup_date": "02/01/2024",
+      "amount": null,
+      "status": "active"
+    },
+    {
+      "id": 19,
+      "first_name": null,
+      "last_name": "ANDERSON",
+      "email": " olivia.anderson@email.com ",
+      "country": null,
+      "signup_date": "2024-01-31",
+      "amount": "3496.14",
+      "status": "Inactive"
+    },
+    {
+      "id": 20,
+      "first_name": "Henry  ",
+      "last_name": "White",
+      "email": "henry.white@",
+      "country": "united states",
+      "signup_date": "2024-01-16",
+      "amount": null,
+      "status": "Active"
+    }
+  ]
+}
