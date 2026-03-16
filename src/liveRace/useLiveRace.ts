@@ -35,6 +35,11 @@ export interface LiveRaceState {
 export const USER_DRIVER_NUMBER = 0;
 export const USER_ACRONYM = "YOU";
 export const USER_COLOR = "#00e5ff";
+const USER_GRID_GAP = 0.003;
+
+function absoluteProgress(lap: number, trackProgress: number) {
+  return Math.max(1, lap) - 1 + trackProgress;
+}
 
 function interpolateAbsoluteProgress(fromLap: number, fromProgress: number, toLap: number, toProgress: number, ratio: number) {
   let fromAbsolute = Math.max(1, fromLap) - 1 + fromProgress;
@@ -54,6 +59,16 @@ function interpolateAbsoluteProgress(fromLap: number, fromProgress: number, toLa
   };
 }
 
+function wrapProgress(progress: number) {
+  if (progress < 0) {
+    return progress + 1;
+  }
+  if (progress >= 1) {
+    return progress - 1;
+  }
+  return progress;
+}
+
 export function useLiveRace(
   field: RaceField | null,
   scoringState: SessionScoringState | null,
@@ -70,6 +85,33 @@ export function useLiveRace(
   const debugPrevFrameRef = useRef<{ lap: number; progress: number } | null>(null);
 
   const maxTime = field ? field.timestamps[field.timestamps.length - 1] ?? 0 : 0;
+
+  const alignUserToBackmarker = useCallback(
+    (base: UserCarState) => {
+      if (!field) {
+        return base;
+      }
+
+      const openingFrames = field.frames[field.timestamps[0] ?? 0] ?? {};
+      const backMarker = Object.values(openingFrames).sort((a, b) => {
+        if (b.position !== a.position) {
+          return b.position - a.position;
+        }
+        return a.trackProgress - b.trackProgress;
+      })[0];
+
+      if (!backMarker) {
+        return base;
+      }
+
+      return {
+        ...base,
+        trackProgress: wrapProgress(backMarker.trackProgress - USER_GRID_GAP),
+        lap: backMarker.lap,
+      };
+    },
+    [field],
+  );
 
   const getFramesAt = useCallback(
     (timestamp: number) => {
@@ -148,16 +190,54 @@ export function useLiveRace(
       setIsPlaying(false);
       setUserCar(createInitialUserCarState());
       scoreEventRef.current = null;
+      return;
     }
-  }, [field]);
+
+    setUserCar((current) => alignUserToBackmarker({
+      ...current,
+      ...createStagedUserCarState(scoringState, lastScoreEvent),
+    }));
+  }, [alignUserToBackmarker, field, lastScoreEvent, scoringState]);
 
   useEffect(() => {
     if (!lastScoreEvent || lastScoreEvent === scoreEventRef.current || !scoringState) {
       return;
     }
     scoreEventRef.current = lastScoreEvent;
-    setUserCar((current) => applyScoreEventToCarState(current, lastScoreEvent, scoringState));
-  }, [lastScoreEvent, scoringState]);
+    setUserCar((current) => {
+      const next = applyScoreEventToCarState(current, lastScoreEvent, scoringState);
+      const driverPositions: RaceDriverPosition[] = Object.values(getFramesAt(replayTime)).map((frame) => ({
+        driverNumber: frame.driverNumber,
+        trackProgress: frame.trackProgress,
+        position: frame.position,
+        lap: frame.lap,
+      }));
+
+      const driversAheadBefore = driverPositions.filter(
+        (driver) => absoluteProgress(driver.lap, driver.trackProgress) > absoluteProgress(current.lap, current.trackProgress),
+      ).length;
+      const driversAheadAfter = driverPositions.filter(
+        (driver) => absoluteProgress(driver.lap, driver.trackProgress) > absoluteProgress(next.lap, next.trackProgress),
+      ).length;
+
+      console.debug("[live-race] user boost trace", {
+        replayTime,
+        raceEvent: lastScoreEvent.race_event,
+        category: lastScoreEvent.action_category,
+        qualityScoreBefore: current.qualityScore,
+        qualityScoreAfter: next.qualityScore,
+        speedBefore: current.speed,
+        speedAfter: next.speed,
+        absoluteBefore: absoluteProgress(current.lap, current.trackProgress),
+        absoluteAfter: absoluteProgress(next.lap, next.trackProgress),
+        positionBefore: current.position,
+        positionAfterProjected: driversAheadAfter + 1,
+        driversPassedProjected: Math.max(0, driversAheadBefore - driversAheadAfter),
+      });
+
+      return next;
+    });
+  }, [getFramesAt, lastScoreEvent, replayTime, scoringState]);
 
   const tick = useCallback(
     (realNow: number) => {
@@ -306,24 +386,7 @@ export function useLiveRace(
     startRace: () => {
       replayTimeRef.current = 0;
       setReplayTime(0);
-      const initial = createStagedUserCarState(scoringState, lastScoreEvent);
-      const openingFrames = getFramesAt(0);
-      const backMarker = Object.values(openingFrames).sort((a, b) => {
-        if (b.position !== a.position) {
-          return b.position - a.position;
-        }
-        return a.trackProgress - b.trackProgress;
-      })[0];
-
-      setUserCar(
-        backMarker
-          ? {
-              ...initial,
-              trackProgress: Math.max(0, backMarker.trackProgress - 0.003),
-              lap: backMarker.lap,
-            }
-          : initial,
-      );
+      setUserCar(alignUserToBackmarker(createStagedUserCarState(scoringState, lastScoreEvent)));
       setIsPlaying(true);
     },
   };
