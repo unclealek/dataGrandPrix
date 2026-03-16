@@ -22,6 +22,7 @@ export interface RaceField {
   sessionName: string;
   circuit: string;
   totalLaps: number;
+  telemetryMode: "live" | "hybrid" | "synthetic";
   drivers: Record<number, F1Driver>;
   timestamps: number[];
   frames: Record<number, Record<number, DriverSnapshot>>;
@@ -228,6 +229,13 @@ export async function fetchRaceField(
 
   log("Processing data...");
 
+  const telemetryMode: RaceField["telemetryMode"] =
+    hasLocationData && carData.length > 0 && positions.length > 0
+      ? "live"
+      : hasLocationData || carData.length > 0 || positions.length > 0
+        ? "hybrid"
+        : "synthetic";
+
   const drivers: Record<number, F1Driver> = {};
   const driverOrder: number[] = [];
   for (const driver of driverData) {
@@ -295,7 +303,7 @@ export async function fetchRaceField(
     };
   }
 
-  type OpenF1TimedRecord = { date: string; [key: string]: unknown };
+  type OpenF1TimedRecord = { date: string;[key: string]: unknown };
   type RecordsByDriver = Record<number, OpenF1TimedRecord[]>;
 
   const locationsByDriver: RecordsByDriver = {};
@@ -415,12 +423,12 @@ export async function fetchRaceField(
   const fallbackEndTime =
     laps.length > 0
       ? Math.max(
-          ...laps.map((lap) => {
-            const lapStart = new Date(String(lap.date_start)).getTime();
-            const lapDurationMs = Number(lap.lap_duration) * 1000 || 90_000;
-            return lapStart + lapDurationMs;
-          }),
-        )
+        ...laps.map((lap) => {
+          const lapStart = new Date(String(lap.date_start)).getTime();
+          const lapDurationMs = Number(lap.lap_duration) * 1000 || 90_000;
+          return lapStart + lapDurationMs;
+        }),
+      )
       : origin + 90_000;
 
   const timestamps = Array.from(
@@ -433,9 +441,9 @@ export async function fetchRaceField(
             : carData.length > 0
               ? carData
               : Array.from(
-                  { length: Math.max(1, Math.ceil((fallbackEndTime - origin) / sampleIntervalMs)) },
-                  (_, index) => ({ date: new Date(origin + index * sampleIntervalMs).toISOString() }),
-                )
+                { length: Math.max(1, Math.ceil((fallbackEndTime - origin) / sampleIntervalMs)) },
+                (_, index) => ({ date: new Date(origin + index * sampleIntervalMs).toISOString() }),
+              )
       ).map(
         (item) =>
           Math.round((new Date(String(item.date)).getTime() - origin) / sampleIntervalMs) * sampleIntervalMs,
@@ -500,6 +508,7 @@ export async function fetchRaceField(
     sessionName: String(session.session_name ?? session.session_type ?? "Race"),
     circuit: String(session.circuit_short_name ?? session.location ?? "Unknown"),
     totalLaps,
+    telemetryMode,
     drivers,
     timestamps,
     frames,

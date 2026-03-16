@@ -15,9 +15,11 @@ interface Props {
 }
 
 const PAD = 44;
-const CAR_RADIUS = 5;
+const CAR_RADIUS = 6;
 const USER_RADIUS = 7;
 const TRACK_WIDTH = 10;
+const STACK_BIN_SIZE = 0.012;
+const STACK_SPACING = 11;
 
 const cueConfig: Record<VisualCueType, { color: string; glowRadius: number; label: string }> = {
   STRAIGHT_BOOST: { color: "#00ff88", glowRadius: 16, label: "BOOST" },
@@ -46,13 +48,60 @@ export function LiveTrackCanvas({
   const scaleX = (x: number) => PAD + x * (width - PAD * 2);
   const scaleY = (y: number) => PAD + y * (height - PAD * 2);
 
-  function getPointAtProgress(progress: number) {
+  function getTrackPoint(progress: number) {
     const path = field.trackPath;
     if (path.length === 0) {
-      return { x: 0.5, y: 0.5 };
+      return { x: 0.5, y: 0.5, nx: 0, ny: -1 };
     }
-    const index = Math.min(path.length - 1, Math.floor(progress * path.length));
-    return path[index];
+    const index = Math.min(path.length - 1, Math.max(0, Math.floor(progress * path.length)));
+    const previous = path[(index - 1 + path.length) % path.length];
+    const current = path[index];
+    const next = path[(index + 1) % path.length];
+    const tangentX = next.x - previous.x;
+    const tangentY = next.y - previous.y;
+    const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+    return {
+      x: current.x,
+      y: current.y,
+      nx: -tangentY / tangentLength,
+      ny: tangentX / tangentLength,
+    };
+  }
+
+  function buildDriverScreenPositions() {
+    const frames = Object.values(realFrames).sort((a, b) => {
+      const progressDelta = a.trackProgress - b.trackProgress;
+      if (Math.abs(progressDelta) > 0.0001) {
+        return progressDelta;
+      }
+      return a.position - b.position;
+    });
+
+    const grouped = new Map<number, DriverSnapshot[]>();
+    for (const frame of frames) {
+      const key = Math.round(frame.trackProgress / STACK_BIN_SIZE);
+      const bucket = grouped.get(key);
+      if (bucket) {
+        bucket.push(frame);
+      } else {
+        grouped.set(key, [frame]);
+      }
+    }
+
+    const positions = new Map<number, { x: number; y: number }>();
+    for (const bucket of grouped.values()) {
+      bucket.forEach((frame, index) => {
+        const point = getTrackPoint(frame.trackProgress);
+        const centeredIndex = index - (bucket.length - 1) / 2;
+        const offset = centeredIndex * STACK_SPACING;
+        positions.set(frame.driverNumber, {
+          x: scaleX(point.x) + point.nx * offset,
+          y: scaleY(point.y) + point.ny * offset,
+        });
+      });
+    }
+
+    return positions;
   }
 
   useEffect(() => {
@@ -114,20 +163,25 @@ export function LiveTrackCanvas({
       context.setLineDash([]);
     }
 
+    const driverPositions = buildDriverScreenPositions();
+
     for (const frame of Object.values(realFrames)) {
-      const point = getPointAtProgress(frame.trackProgress);
+      const point = driverPositions.get(frame.driverNumber);
+      if (!point) {
+        continue;
+      }
       const driver = field.drivers[frame.driverNumber];
       const isSelected = selectedDriverNumber === frame.driverNumber;
       context.beginPath();
-      context.arc(scaleX(point.x), scaleY(point.y), isSelected ? CAR_RADIUS + 2 : CAR_RADIUS, 0, Math.PI * 2);
+      context.arc(point.x, point.y, isSelected ? CAR_RADIUS + 2 : CAR_RADIUS, 0, Math.PI * 2);
       context.fillStyle = driver?.teamColor ?? "#ffffff";
       context.fill();
-      context.strokeStyle = isSelected ? "#ffffff" : "#00000077";
-      context.lineWidth = isSelected ? 2 : 1;
+      context.strokeStyle = isSelected ? "#ffffff" : "#ffffffaa";
+      context.lineWidth = isSelected ? 2 : 1.5;
       context.stroke();
     }
 
-    const userPoint = getPointAtProgress(userCar.trackProgress);
+    const userPoint = getTrackPoint(userCar.trackProgress);
     const userX = scaleX(userPoint.x);
     const userY = scaleY(userPoint.y);
     const cue = cueConfig[userCar.visualCue] ?? cueConfig.NONE;
@@ -174,16 +228,20 @@ export function LiveTrackCanvas({
 
     const mouseX = (clientX - rect.left) * (width / rect.width);
     const mouseY = (clientY - rect.top) * (height / rect.height);
-    const userPoint = getPointAtProgress(userCar.trackProgress);
+    const userPoint = getTrackPoint(userCar.trackProgress);
     if (Math.hypot(mouseX - scaleX(userPoint.x), mouseY - scaleY(userPoint.y)) < 14) {
       return USER_DRIVER_NUMBER;
     }
 
+    const driverPositions = buildDriverScreenPositions();
     let closest: number | null = null;
     let minDistance = 14;
     for (const frame of Object.values(realFrames)) {
-      const point = getPointAtProgress(frame.trackProgress);
-      const distance = Math.hypot(mouseX - scaleX(point.x), mouseY - scaleY(point.y));
+      const point = driverPositions.get(frame.driverNumber);
+      if (!point) {
+        continue;
+      }
+      const distance = Math.hypot(mouseX - point.x, mouseY - point.y);
       if (distance < minDistance) {
         minDistance = distance;
         closest = frame.driverNumber;

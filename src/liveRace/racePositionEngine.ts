@@ -1,6 +1,6 @@
 import type { ScoreEvent, SessionScoringState } from "../types";
 
-const GRID_START_OFFSET = 0.02;
+const GRID_START_OFFSET = 0;
 const BASE_PROGRESS_PER_MS = 1 / 90_000;
 const SPEED_SCALE_MIN = 0.6;
 const SPEED_SCALE_MAX = 1.4;
@@ -113,6 +113,28 @@ export function createInitialUserCarState(): UserCarState {
     fuel: 65,
     isPenalty: false,
     hudMessage: "Grid loaded - start cleaning",
+  };
+}
+
+export function createStagedUserCarState(
+  scoringState: SessionScoringState | null,
+  lastScoreEvent: ScoreEvent | null,
+): UserCarState {
+  const base = createInitialUserCarState();
+  if (!scoringState) {
+    return base;
+  }
+
+  const qualityScore = lastScoreEvent?.quality_score ?? scoringState.lastScoreEvent?.quality_score ?? base.qualityScore;
+  const hudMessage = lastScoreEvent?.hud_message ?? scoringState.lastScoreEvent?.hud_message ?? base.hudMessage;
+
+  return {
+    ...base,
+    speed: scoringState.currentSpeed,
+    fuel: scoringState.currentFuel,
+    qualityScore,
+    hudMessage,
+    position: scoreToPosition(qualityScore),
   };
 }
 

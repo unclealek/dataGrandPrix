@@ -156,6 +156,7 @@ export function RaceOverlay({
   }
 
   const activeDriverNumber = hoveredDriverNumber ?? selectedDriverNumber;
+  const opponentCount = Object.keys(race.realDriverFrames).length;
   const activeDriverInfo =
     activeDriverNumber === USER_DRIVER_NUMBER
       ? {
@@ -194,6 +195,8 @@ export function RaceOverlay({
           <div className="live-race-meta-inline">
             <span>{field.totalLaps} laps</span>
             <span>Session {field.sessionKey}</span>
+            <span className={`telemetry-mode telemetry-mode-${field.telemetryMode}`}>{field.telemetryMode}</span>
+            <span>{opponentCount} drivers</span>
           </div>
         </div>
 
@@ -209,45 +212,50 @@ export function RaceOverlay({
               width={width}
               height={height}
             />
+            <div className="live-race-debug-badge">
+              {field.telemetryMode} · {opponentCount} opponents
+            </div>
             {startState !== "running" ? (
               <div className="live-race-start-overlay">
-                {startState === "countdown" && countdownNumber ? (
-                  <>
-                    <div className="live-race-lights">
-                      {[3, 2, 1].map((value) => (
-                        <span
-                          key={value}
-                          className={`live-race-light${countdownNumber <= value ? " active" : ""}${countdownNumber === value ? " current" : ""}`}
-                        />
-                      ))}
-                    </div>
-                    <div className="live-race-countdown">{countdownNumber}</div>
-                  </>
-                ) : (
-                  <>
-                    <div className="live-race-lights">
-                      <span className="live-race-light" />
-                      <span className="live-race-light" />
-                      <span className="live-race-light" />
-                    </div>
-                    <button
-                      className="live-race-start-button"
-                      onClick={() => {
-                        setStartState("countdown");
-                        setCountdownNumber(3);
-                        window.setTimeout(() => setCountdownNumber(2), 900);
-                        window.setTimeout(() => setCountdownNumber(1), 1800);
-                        window.setTimeout(() => {
-                          setCountdownNumber(null);
-                          setStartState("running");
-                          race.startRace();
-                        }, 2700);
-                      }}
-                    >
-                      Start Race
-                    </button>
-                  </>
-                )}
+                <div className="live-race-start-panel">
+                  {startState === "countdown" && countdownNumber ? (
+                    <>
+                      <div className="live-race-lights">
+                        {[3, 2, 1].map((value) => (
+                          <span
+                            key={value}
+                            className={`live-race-light${countdownNumber <= value ? " active" : ""}${countdownNumber === value ? " current" : ""}`}
+                          />
+                        ))}
+                      </div>
+                      <div className="live-race-countdown">{countdownNumber}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="live-race-lights">
+                        <span className="live-race-light" />
+                        <span className="live-race-light" />
+                        <span className="live-race-light" />
+                      </div>
+                      <button
+                        className="live-race-start-button"
+                        onClick={() => {
+                          setStartState("countdown");
+                          setCountdownNumber(3);
+                          window.setTimeout(() => setCountdownNumber(2), 900);
+                          window.setTimeout(() => setCountdownNumber(1), 1800);
+                          window.setTimeout(() => {
+                            setCountdownNumber(null);
+                            setStartState("running");
+                            race.startRace();
+                          }, 2700);
+                        }}
+                      >
+                        Start Race
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>

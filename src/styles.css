@@ -451,6 +451,18 @@ button:active:not(:disabled) {
   text-transform: uppercase;
 }
 
+.telemetry-mode-live {
+  color: #7fe08b;
+}
+
+.telemetry-mode-hybrid {
+  color: #f5c518;
+}
+
+.telemetry-mode-synthetic {
+  color: #ff9d76;
+}
+
 .live-race-canvas-wrap {
   position: relative;
   overflow: hidden;
@@ -459,6 +471,21 @@ button:active:not(:disabled) {
     radial-gradient(circle at 20% 20%, rgba(0, 229, 255, 0.08), transparent 28%),
     radial-gradient(circle at 82% 18%, rgba(255, 213, 76, 0.08), transparent 24%),
     linear-gradient(180deg, rgba(21, 27, 36, 0.98), rgba(12, 16, 23, 0.98));
+}
+
+.live-race-debug-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(7, 10, 15, 0.72);
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
 }
 
 .live-track-canvas {
@@ -482,10 +509,23 @@ button:active:not(:disabled) {
 .live-race-start-overlay {
   position: absolute;
   inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 18px;
+  pointer-events: none;
+}
+
+.live-race-start-panel {
   display: grid;
   place-items: center;
   gap: 16px;
-  background: linear-gradient(180deg, rgba(7, 10, 15, 0.42), rgba(7, 10, 15, 0.68));
+  min-width: 260px;
+  padding: 22px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(7, 10, 15, 0.74);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
 }
 
 .live-race-start-button {
