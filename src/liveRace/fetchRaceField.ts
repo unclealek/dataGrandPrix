@@ -52,11 +52,54 @@ export async function listRaceSessions(year = 2024): Promise<SessionSummary[]> {
     }));
 }
 
+const FALLBACK_BASE_PROGRESS_PER_MS = 1 / 90_000;
+
+function enforceSyntheticForwardMotion(
+  timestamps: number[],
+  frames: Record<number, Record<number, DriverSnapshot>>,
+  driverNumbers: number[],
+  totalLaps: number,
+) {
+  for (const driverNumber of driverNumbers) {
+    let previousAbsolute: number | null = null;
+
+    for (let index = 0; index < timestamps.length; index += 1) {
+      const timestamp = timestamps[index];
+      const frame = frames[timestamp]?.[driverNumber];
+      if (!frame) {
+        continue;
+      }
+
+      const elapsedMs = index > 0 ? timestamps[index] - timestamps[index - 1] : 0;
+      const speedKmh = frame.speed > 0 ? frame.speed : 220;
+      const minAdvance = FALLBACK_BASE_PROGRESS_PER_MS * (speedKmh / 250) * elapsedMs;
+
+      let absoluteProgress = (Math.max(1, frame.lap) - 1) + frame.trackProgress;
+
+      if (previousAbsolute !== null && absoluteProgress < previousAbsolute) {
+        absoluteProgress = previousAbsolute + minAdvance;
+      }
+
+      const clampedLap = Math.min(totalLaps, Math.floor(absoluteProgress) + 1);
+      const wrappedProgress = absoluteProgress - Math.floor(absoluteProgress);
+
+      frames[timestamp][driverNumber] = {
+        ...frame,
+        lap: clampedLap,
+        trackProgress: wrappedProgress,
+      };
+
+      previousAbsolute = (clampedLap - 1) + wrappedProgress;
+    }
+  }
+}
+
 export async function fetchRaceField(
   sessionKey: number,
   onProgress?: (message: string) => void,
 ): Promise<RaceField> {
   const log = onProgress ?? (() => undefined);
+  const debugEnabled = typeof window !== "undefined";
 
   async function safeFetchArray(url: string, failureMessage: string) {
     try {
@@ -192,7 +235,7 @@ export async function fetchRaceField(
     };
   }
 
-  type OpenF1TimedRecord = { date: string; [key: string]: unknown };
+  type OpenF1TimedRecord = { date: string;[key: string]: unknown };
   type RecordsByDriver = Record<number, OpenF1TimedRecord[]>;
 
   const locationsByDriver: RecordsByDriver = {};
@@ -232,6 +275,15 @@ export async function fetchRaceField(
     const driverNumber = Number(lap.driver_number);
     lapByDriver[driverNumber] ??= [];
     lapByDriver[driverNumber].push(lap);
+  }
+  for (const driverNumber of Object.keys(lapByDriver).map(Number)) {
+    lapByDriver[driverNumber].sort((a, b) => {
+      const lapDelta = Number(a.lap_number) - Number(b.lap_number);
+      if (lapDelta !== 0) {
+        return lapDelta;
+      }
+      return String(a.date_start ?? "").localeCompare(String(b.date_start ?? ""));
+    });
   }
 
   let totalLaps = 1;
@@ -299,6 +351,12 @@ export async function fetchRaceField(
     return Math.max(0, Math.min(0.999, (timestampMs - lapStart) / duration));
   }
 
+  const startingPositions: Record<number, number> = {};
+  for (const driverNumber of Object.keys(drivers).map(Number)) {
+    const firstPosition = positionsByDriver[driverNumber]?.[0];
+    startingPositions[driverNumber] = Number(firstPosition?.position ?? 20);
+  }
+
   const sampleIntervalMs = 1000;
   const fallbackEndTime =
     laps.length > 0
@@ -310,7 +368,7 @@ export async function fetchRaceField(
           }),
         )
       : origin + 90_000;
-  const timestamps = Array.from(
+  const rawTimestamps = Array.from(
     new Set(
       (
         hasLocationData
@@ -326,11 +384,20 @@ export async function fetchRaceField(
     ),
   ).sort((a, b) => a - b);
 
+  const playbackStartOffset = rawTimestamps.find((timestamp) => timestamp >= 0) ?? rawTimestamps[0] ?? 0;
+  const timestamps = rawTimestamps
+    .filter((timestamp) => timestamp >= playbackStartOffset)
+    .map((timestamp) => timestamp - playbackStartOffset);
   const frames: Record<number, Record<number, DriverSnapshot>> = {};
 
-  for (const timestamp of timestamps) {
-    const isoTarget = new Date(origin + timestamp).toISOString();
-    const absoluteTimestamp = origin + timestamp;
+  for (const rawTimestamp of rawTimestamps) {
+    if (rawTimestamp < playbackStartOffset) {
+      continue;
+    }
+
+    const timestamp = rawTimestamp - playbackStartOffset;
+    const isoTarget = new Date(origin + rawTimestamp).toISOString();
+    const absoluteTimestamp = origin + rawTimestamp;
     frames[timestamp] = {};
 
     for (const driverNumber of Object.keys(drivers).map(Number)) {
@@ -345,7 +412,7 @@ export async function fetchRaceField(
           trackProgress = pointToTrackProgress(Number(location.x), Number(location.y));
         }
       } else {
-        const positionValue = Number(position?.position ?? 20);
+        const positionValue = startingPositions[driverNumber] ?? 20;
         const stagger = ((20 - positionValue) / 20) * 0.035;
         trackProgress = (lapProgressAt(driverNumber, absoluteTimestamp) + stagger) % 1;
       }
@@ -363,6 +430,60 @@ export async function fetchRaceField(
         gear: Number(telemetry?.gear ?? fallbackGear),
         drs: Number(telemetry?.drs ?? 0) >= 10,
       };
+    }
+  }
+
+  if (!hasLocationData) {
+    enforceSyntheticForwardMotion(timestamps, frames, Object.keys(drivers).map(Number), totalLaps);
+  }
+
+  if (debugEnabled) {
+    const sampleDriver = Object.keys(drivers).map(Number).sort((a, b) => a - b)[0];
+    if (sampleDriver !== undefined) {
+      let previousLap: number | null = null;
+      let previousProgress: number | null = null;
+      const regressions: Array<{
+        timestamp: number;
+        previousLap: number | null;
+        previousProgress: number | null;
+        lap: number;
+        progress: number;
+      }> = [];
+
+      for (const timestamp of timestamps) {
+        const frame = frames[timestamp]?.[sampleDriver];
+        if (!frame) {
+          continue;
+        }
+
+        if (
+          previousLap !== null &&
+          previousProgress !== null &&
+          frame.lap === previousLap &&
+          frame.trackProgress + 0.0001 < previousProgress
+        ) {
+          regressions.push({
+            timestamp,
+            previousLap,
+            previousProgress,
+            lap: frame.lap,
+            progress: frame.trackProgress,
+          });
+          if (regressions.length >= 5) {
+            break;
+          }
+        }
+
+        previousLap = frame.lap;
+        previousProgress = frame.trackProgress;
+      }
+
+      console.debug("[live-race] fetchRaceField regression check", {
+        sessionKey,
+        hasLocationData,
+        sampleDriver,
+        regressions,
+      });
     }
   }
 
