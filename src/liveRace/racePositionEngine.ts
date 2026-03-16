@@ -1,6 +1,8 @@
 import type { ScoreEvent, SessionScoringState } from "../types";
 
-const GRID_START_OFFSET = 0;
+// GRID_START_OFFSET removed — grid stagger is now owned entirely by fetchRaceField.ts.
+// Real drivers are staggered there. The user car starts at progress 0 (back of grid)
+// and earns position through SQL cleaning, which is the game mechanic.
 const BASE_PROGRESS_PER_MS = 1 / 90_000;
 const SPEED_SCALE_MIN = 0.6;
 const SPEED_SCALE_MAX = 1.4;
@@ -103,7 +105,7 @@ export function raceEventToVisualCue(raceEvent: string): VisualCueType {
 
 export function createInitialUserCarState(): UserCarState {
   return {
-    trackProgress: GRID_START_OFFSET,
+    trackProgress: 0, // starts at back of grid; real drivers are staggered ahead in fetchRaceField
     position: 20,
     speed: 240,
     qualityScore: 0,
@@ -113,28 +115,6 @@ export function createInitialUserCarState(): UserCarState {
     fuel: 65,
     isPenalty: false,
     hudMessage: "Grid loaded - start cleaning",
-  };
-}
-
-export function createStagedUserCarState(
-  scoringState: SessionScoringState | null,
-  lastScoreEvent: ScoreEvent | null,
-): UserCarState {
-  const base = createInitialUserCarState();
-  if (!scoringState) {
-    return base;
-  }
-
-  const qualityScore = lastScoreEvent?.quality_score ?? scoringState.lastScoreEvent?.quality_score ?? base.qualityScore;
-  const hudMessage = lastScoreEvent?.hud_message ?? scoringState.lastScoreEvent?.hud_message ?? base.hudMessage;
-
-  return {
-    ...base,
-    speed: scoringState.currentSpeed,
-    fuel: scoringState.currentFuel,
-    qualityScore,
-    hudMessage,
-    position: scoreToPosition(qualityScore),
   };
 }
 
