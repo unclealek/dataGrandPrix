@@ -31,6 +31,8 @@ export interface LiveRaceState {
   isPlaying: boolean;
   speed: ReplaySpeed;
   progress: number;
+  startRace: () => void;
+  pauseRace: () => void;
   togglePlay: () => void;
   setSpeed: (speed: ReplaySpeed) => void;
   seek: (ms: number) => void;
@@ -196,14 +198,6 @@ export function useLiveRace(
   }, [isPlaying, tick]);
 
   useEffect(() => {
-    if (!field) {
-      return;
-    }
-    const timeoutId = window.setTimeout(() => setIsPlaying(true), 500);
-    return () => window.clearTimeout(timeoutId);
-  }, [field]);
-
-  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
         return;
@@ -272,6 +266,13 @@ export function useLiveRace(
     isPlaying,
     speed,
     progress: maxTime > 0 ? replayTime / maxTime : 0,
+    startRace: () => {
+      replayTimeRef.current = 0;
+      setReplayTime(0);
+      setUserCar(createInitialUserCarState());
+      setIsPlaying(true);
+    },
+    pauseRace: () => setIsPlaying(false),
     togglePlay: () => setIsPlaying((current) => !current),
     setSpeed,
     seek: (timeMs) => {

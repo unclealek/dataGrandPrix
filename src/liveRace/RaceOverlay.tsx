@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ScoreEvent, SessionScoringState } from "../types";
 import { fetchRaceField, listRaceSessions, type RaceField, type SessionSummary } from "./fetchRaceField";
 import { LiveLeaderboard } from "./LiveLeaderboard";
@@ -15,6 +15,7 @@ interface Props {
 }
 
 type LoadState = "pick" | "loading" | "ready" | "error";
+type StartState = "staged" | "countdown" | "running";
 
 export function RaceOverlay({
   scoringState,
@@ -30,6 +31,9 @@ export function RaceOverlay({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [hoveredDriverNumber, setHoveredDriverNumber] = useState<number | null>(null);
   const [selectedDriverNumber, setSelectedDriverNumber] = useState<number | null>(null);
+  const [startState, setStartState] = useState<StartState>("staged");
+  const [countdownNumber, setCountdownNumber] = useState<number | null>(null);
+  const retryCountRef = useRef(0);
 
   const race = useLiveRace(field, scoringState, lastScoreEvent);
 
@@ -41,6 +45,7 @@ export function RaceOverlay({
       const nextField = await fetchRaceField(sessionKey, setLoadMessage);
       setField(nextField);
       setLoadState("ready");
+      retryCountRef.current = 0;
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "Unknown OpenF1 error");
       setLoadState("error");
@@ -77,6 +82,26 @@ export function RaceOverlay({
     };
   }, [defaultSessionKey, loadState, sessions.length]);
 
+  useEffect(() => {
+    if (!defaultSessionKey || loadState !== "error" || retryCountRef.current >= 2) {
+      return;
+    }
+
+    retryCountRef.current += 1;
+    const timeoutId = window.setTimeout(() => {
+      void loadField(defaultSessionKey);
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [defaultSessionKey, loadField, loadState]);
+
+  useEffect(() => {
+    if (loadState !== "ready") {
+      setStartState("staged");
+      setCountdownNumber(null);
+    }
+  }, [loadState]);
+
   if (loadState === "pick") {
     return (
       <div className="live-race-picker" style={{ minHeight: height }}>
@@ -106,6 +131,16 @@ export function RaceOverlay({
   }
 
   if (!field || loadState === "error") {
+    if (defaultSessionKey && retryCountRef.current > 0 && retryCountRef.current < 3) {
+      return (
+        <div className="live-race-loading" style={{ minHeight: height }}>
+          <div className="live-race-spinner" />
+          <p>Retrying race connection...</p>
+          <small>{loadError ?? "Reconnecting to OpenF1..."}</small>
+        </div>
+      );
+    }
+
     return (
       <div className="live-race-error" style={{ minHeight: height }}>
         <p>Failed to load race data.</p>
@@ -162,64 +197,113 @@ export function RaceOverlay({
           </div>
         </div>
 
-        <div className="live-race-canvas-wrap">
-          <LiveTrackCanvas
-            field={field}
-            realFrames={race.realDriverFrames}
-            userCar={race.userCar}
-            selectedDriverNumber={activeDriverNumber}
-            onDriverHover={setHoveredDriverNumber}
-            onDriverSelect={setSelectedDriverNumber}
-            width={width}
-            height={height}
-          />
-          <div className="live-race-hud-slot">
-            <UserHUD userCar={race.userCar} totalLaps={field.totalLaps} leadLap={race.leadLap} />
-          </div>
-          <div className="live-race-board-slot">
-            <LiveLeaderboard leaderboard={race.leaderboard} />
-          </div>
-          {activeDriverInfo ? (
-            <div className="live-race-driver-card">
-              <div className="live-race-driver-head">
-                <strong style={{ color: activeDriverInfo.teamColor }}>{activeDriverInfo.acronym}</strong>
-                <span>{activeDriverInfo.fullName}</span>
+        <div className="live-race-main">
+          <div className="live-race-canvas-wrap">
+            <LiveTrackCanvas
+              field={field}
+              realFrames={race.realDriverFrames}
+              userCar={race.userCar}
+              selectedDriverNumber={activeDriverNumber}
+              onDriverHover={setHoveredDriverNumber}
+              onDriverSelect={setSelectedDriverNumber}
+              width={width}
+              height={height}
+            />
+            {startState !== "running" ? (
+              <div className="live-race-start-overlay">
+                {startState === "countdown" && countdownNumber ? (
+                  <>
+                    <div className="live-race-lights">
+                      {[3, 2, 1].map((value) => (
+                        <span
+                          key={value}
+                          className={`live-race-light${countdownNumber <= value ? " active" : ""}${countdownNumber === value ? " current" : ""}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="live-race-countdown">{countdownNumber}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="live-race-lights">
+                      <span className="live-race-light" />
+                      <span className="live-race-light" />
+                      <span className="live-race-light" />
+                    </div>
+                    <button
+                      className="live-race-start-button"
+                      onClick={() => {
+                        setStartState("countdown");
+                        setCountdownNumber(3);
+                        window.setTimeout(() => setCountdownNumber(2), 900);
+                        window.setTimeout(() => setCountdownNumber(1), 1800);
+                        window.setTimeout(() => {
+                          setCountdownNumber(null);
+                          setStartState("running");
+                          race.startRace();
+                        }, 2700);
+                      }}
+                    >
+                      Start Race
+                    </button>
+                  </>
+                )}
               </div>
-              <div className="live-race-driver-stats">
-                <span>P{activeDriverInfo.position}</span>
-                <span>L{activeDriverInfo.lap}</span>
-                <span>{Math.round(activeDriverInfo.speed)} km/h</span>
-                {activeDriverInfo.gear !== null ? <span>G{activeDriverInfo.gear}</span> : null}
-                {activeDriverInfo.drs !== null ? <span>{activeDriverInfo.drs ? "DRS ON" : "DRS OFF"}</span> : null}
+            ) : null}
+          </div>
+
+          <aside className="live-race-sidebar">
+            <UserHUD userCar={race.userCar} totalLaps={field.totalLaps} leadLap={race.leadLap} />
+
+            <div className="live-race-controls">
+              <button
+                className="live-race-play"
+                onClick={startState === "running" ? race.togglePlay : undefined}
+                disabled={startState !== "running"}
+              >
+                {race.isPlaying ? "Pause" : "Play"}
+              </button>
+              <input
+                className="live-race-scrubber"
+                type="range"
+                min={0}
+                max={field.timestamps[field.timestamps.length - 1] ?? 0}
+                step={1000}
+                value={race.replayTime}
+                onChange={(event) => race.seek(Number(event.target.value))}
+                disabled={startState !== "running"}
+              />
+              <div className="live-race-speed-group">
+                {([1, 2, 4, 8, 16] as const).map((value) => (
+                  <button
+                    key={value}
+                    className={`live-race-speed${race.speed === value ? " active" : ""}`}
+                    onClick={() => race.setSpeed(value)}
+                  >
+                    {value}x
+                  </button>
+                ))}
               </div>
             </div>
-          ) : null}
-        </div>
 
-        <div className="live-race-controls">
-          <button className="live-race-play" onClick={race.togglePlay}>
-            {race.isPlaying ? "Pause" : "Play"}
-          </button>
-          <input
-            className="live-race-scrubber"
-            type="range"
-            min={0}
-            max={field.timestamps[field.timestamps.length - 1] ?? 0}
-            step={1000}
-            value={race.replayTime}
-            onChange={(event) => race.seek(Number(event.target.value))}
-          />
-          <div className="live-race-speed-group">
-            {([1, 2, 4, 8, 16] as const).map((value) => (
-              <button
-                key={value}
-                className={`live-race-speed${race.speed === value ? " active" : ""}`}
-                onClick={() => race.setSpeed(value)}
-              >
-                {value}x
-              </button>
-            ))}
-          </div>
+            {activeDriverInfo ? (
+              <div className="live-race-driver-card">
+                <div className="live-race-driver-head">
+                  <strong style={{ color: activeDriverInfo.teamColor }}>{activeDriverInfo.acronym}</strong>
+                  <span>{activeDriverInfo.fullName}</span>
+                </div>
+                <div className="live-race-driver-stats">
+                  <span>P{activeDriverInfo.position}</span>
+                  <span>L{activeDriverInfo.lap}</span>
+                  <span>{Math.round(activeDriverInfo.speed)} km/h</span>
+                  {activeDriverInfo.gear !== null ? <span>G{activeDriverInfo.gear}</span> : null}
+                  {activeDriverInfo.drs !== null ? <span>{activeDriverInfo.drs ? "DRS ON" : "DRS OFF"}</span> : null}
+                </div>
+              </div>
+            ) : null}
+
+            <LiveLeaderboard leaderboard={race.leaderboard} />
+          </aside>
         </div>
       </div>
     </div>
