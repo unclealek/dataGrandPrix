@@ -4,7 +4,7 @@ import type { DriverSnapshot, RaceField } from "./fetchRaceField";
 import {
   applyScoreEventToCarState,
   createInitialUserCarState,
-  createStagedUserCarState,
+  ///createStagedUserCarState,
   tickUserCar,
   type RaceDriverPosition,
   type UserCarState,
@@ -265,7 +265,12 @@ export function useLiveRace(
     startRace: () => {
       replayTimeRef.current = 0;
       setReplayTime(0);
-      setUserCar(createStagedUserCarState(scoringState, lastScoreEvent));
+      const initial = createInitialUserCarState();
+      setUserCar(
+        scoringState && lastScoreEvent
+          ? applyScoreEventToCarState(initial, lastScoreEvent, scoringState)
+          : initial,
+      );
       setIsPlaying(true);
     },
   };
