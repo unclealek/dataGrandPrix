@@ -479,6 +479,48 @@ button:active:not(:disabled) {
   gap: 12px;
 }
 
+.live-race-monitor {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(9, 13, 19, 0.74);
+}
+
+.live-race-monitor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.live-race-monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.live-race-monitor-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.84rem;
+}
+
+.live-race-monitor-row-user {
+  border-color: rgba(0, 229, 255, 0.35);
+  background: rgba(0, 229, 255, 0.06);
+}
+
+.live-race-monitor-row strong {
+  font-size: 0.95rem;
+}
+
 .live-race-start-overlay {
   position: absolute;
   inset: 0;

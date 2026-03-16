@@ -198,6 +198,36 @@ export function RaceOverlay({
 
   const activeDriverNumber = hoveredDriverNumber ?? selectedDriverNumber;
   const opponentCount = Object.keys(race.realDriverFrames).length;
+  const driverMonitorRows = [
+    {
+      driverNumber: USER_DRIVER_NUMBER,
+      acronym: "YOU",
+      teamColor: "#00e5ff",
+      speed: race.userCar.speed,
+      fuel: Math.round(race.userCar.fuel),
+      lap: race.userCar.lap,
+      isUser: true,
+    },
+    ...Object.entries(race.realDriverFrames)
+      .map(([driverNumberString, frame]) => {
+        const driverNumber = Number(driverNumberString);
+        const driver = field.drivers[driverNumber];
+        if (!driver) {
+          return null;
+        }
+        return {
+          driverNumber,
+          acronym: driver.acronym,
+          teamColor: driver.teamColor,
+          speed: frame.speed,
+          fuel: null,
+          lap: frame.lap,
+          isUser: false,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => a.driverNumber - b.driverNumber),
+  ];
   const activeDriverInfo =
     activeDriverNumber === USER_DRIVER_NUMBER
       ? {
@@ -308,6 +338,23 @@ export function RaceOverlay({
 
             <LiveLeaderboard leaderboard={race.leaderboard} />
           </aside>
+        </div>
+
+        <div className="live-race-monitor">
+          <div className="live-race-monitor-head">
+            <p className="section-kicker">Temporary Monitor</p>
+            <span>Speed for all drivers, fuel only for YOU</span>
+          </div>
+          <div className="live-race-monitor-grid">
+            {driverMonitorRows.map((row) => (
+              <div key={row.driverNumber} className={`live-race-monitor-row${row.isUser ? " live-race-monitor-row-user" : ""}`}>
+                <strong style={{ color: row.teamColor }}>{row.acronym}</strong>
+                <span>L{row.lap}</span>
+                <span>{Math.round(row.speed)} km/h</span>
+                <span>{row.fuel === null ? "fuel --" : `fuel ${row.fuel}`}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
