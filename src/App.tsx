@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { ArrowRight, CarFront, Check, Flag, History, Lock, RotateCcw, Trophy, Undo2, X, Zap } from "lucide-react";
+import { ArrowRight, Check, Flag, History, Lock, RotateCcw, Trophy, Undo2, X, Zap } from "lucide-react";
 import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from "@supabase/supabase-js";
-import RaceReplay from "./RaceReplay";
 import { raceData, STARTER_SQL } from "./data";
-import circuitData from "./generated/circuit.json";
-import { appendReplayEntry, advanceTrackPosition, createReplayBuffer, finaliseReplayBuffer, formatLapTime, type ReplayBuffer, type ReplaySummary } from "./lib/replay";
 import { applyConfirmedScore, createInitialScoringState, scorePreview, scoreQualify, summarizeScore } from "./lib/scoring";
+import { RaceOverlay } from "./liveRace/RaceOverlay";
 import { supabase } from "./lib/supabase";
 import type {
   Layer,
@@ -205,10 +203,6 @@ export default function App() {
   const [previewSuccessFlash, setPreviewSuccessFlash] = useState(false);
   const [selectedQualifyTarget, setSelectedQualifyTarget] = useState<Layer | null>(null);
   const [pendingScoreEvent, setPendingScoreEvent] = useState<ScoreEvent | null>(null);
-  const [replayBuffer, setReplayBuffer] = useState<ReplayBuffer>(createReplayBuffer);
-  const [trackPosition, setTrackPosition] = useState(0);
-  const [gamePhase, setGamePhase] = useState<"cleaning" | "replay" | "results">("cleaning");
-  const [replaySummary, setReplaySummary] = useState<ReplaySummary | null>(null);
   const [qualifyArmed, setQualifyArmed] = useState<Record<Layer, boolean>>({
     bronze: false,
     silver: false,
@@ -363,23 +357,6 @@ export default function App() {
     return () => window.clearTimeout(timeoutId);
   }, [previewSuccessFlash]);
 
-  useEffect(() => {
-    if (gamePhase !== "cleaning") {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      setTrackPosition((prev) => {
-        const pace = Math.max(120, session.scoring.currentSpeed);
-        const delta = (pace / 240) * 0.0016;
-        const next = prev + delta;
-        return next >= 1 ? next - 1 : next;
-      });
-    }, 120);
-
-    return () => window.clearInterval(intervalId);
-  }, [gamePhase, session.scoring.currentSpeed]);
-
   async function runQuery() {
     if (!currentVersion) {
       return;
@@ -521,13 +498,6 @@ export default function App() {
     });
     setPendingScoreEvent(null);
     setMessage({ type: "success", text: `${pendingScoreEvent.hud_message} Preview confirmed into the active table.` });
-    setReplayBuffer((prev) =>
-      appendReplayEntry(prev, pendingScoreEvent, {
-        speedAtEvent: Math.max(0, session.scoring.currentSpeed + pendingScoreEvent.speed_delta),
-        trackPosition,
-      }),
-    );
-    setTrackPosition((prev) => advanceTrackPosition(prev, pendingScoreEvent));
     setQualifyArmed((prev) => ({ ...prev, [activeLayer]: true }));
   }
 
@@ -595,8 +565,6 @@ export default function App() {
       return;
     }
 
-    const finalQualityScore = qualifyEvent?.quality_score ?? scoreSummary.score;
-    const finalLockedErrors = qualifyEvent?.locked_errors ?? [];
     setSession((prev) => {
       const promoted = createSnapshot(targetLayer, cloneRows(currentVersion.rows), 1, currentVersion.columns);
       const qualifyReadiness =
@@ -661,13 +629,6 @@ export default function App() {
           ? `${qualifyEvent.hud_message} Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`
           : `Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`,
     });
-    if (targetLayer === "gold") {
-      setReplayBuffer((prev) => finaliseReplayBuffer(prev, targetLayer, finalQualityScore, finalLockedErrors));
-      setReplaySummary(null);
-      setGamePhase("replay");
-    } else {
-      setGamePhase("cleaning");
-    }
     setQualifyArmed((prev) => ({ ...prev, [targetLayer]: false }));
     setPendingScoreEvent(null);
   }
@@ -680,10 +641,6 @@ export default function App() {
     setPreviewSuccessFlash(false);
     setSelectedQualifyTarget(null);
     setPendingScoreEvent(null);
-    setReplayBuffer(createReplayBuffer());
-    setTrackPosition(0);
-    setGamePhase("cleaning");
-    setReplaySummary(null);
   }
 
   return (
@@ -721,53 +678,50 @@ export default function App() {
         <div className="hazard-line" />
 
         <section className="panel telemetry-panel">
-            <div className="section-header">
-              <div>
-                <p className="section-kicker">Telemetry</p>
-                <h2>Current Cleaning Run</h2>
+          <div className="section-header telemetry-header">
+            <div>
+              <p className="section-kicker">Telemetry</p>
+              <h2>Current Cleaning Run</h2>
+            </div>
+          </div>
+
+          <div className="telemetry-stats">
+            {telemetryStats.map((stat) => (
+              <div key={stat.label} className="stat-card">
+                <span>{stat.label}</span>
+                <strong>{stat.value}</strong>
               </div>
-            <div className="telemetry-stats">
-              {telemetryStats.map((stat) => (
-                <div key={stat.label} className="stat-card">
-                  <span>{stat.label}</span>
-                  <strong>{stat.value}</strong>
-                </div>
-              ))}
-            </div>
-            </div>
+            ))}
+          </div>
 
-            <div className="race-meta">
-              <span>Race ID: {session.race.race_id}</span>
-              <span>Schema: {session.race.schema_version}</span>
-              <span>Source Table: {session.race.table_name}</span>
-              <span>Race Row: {raceRecordId ?? "Pending"}</span>
-              <span>Session Row: {raceSessionId ?? "Pending"}</span>
-              <span>Duplicates: {scoreSummary.duplicateRows}</span>
-              <span>Null Cells: {scoreSummary.nullCells}</span>
-              <span>Bad Emails: {scoreSummary.malformedEmails}</span>
-              <span>Clean Rows: {scoreSummary.cleanRows}</span>
-              <span>Action: {activeScoreEvent?.action_type ?? "NONE"}</span>
-              <span>Event: {activeScoreEvent?.race_event ?? "GRID_READY"}</span>
-            </div>
+          <div className="race-meta">
+            <span>Race ID: {session.race.race_id}</span>
+            <span>Schema: {session.race.schema_version}</span>
+            <span>Source Table: {session.race.table_name}</span>
+            <span>Race Row: {raceRecordId ?? "Pending"}</span>
+            <span>Session Row: {raceSessionId ?? "Pending"}</span>
+            <span>Duplicates: {scoreSummary.duplicateRows}</span>
+            <span>Null Cells: {scoreSummary.nullCells}</span>
+            <span>Bad Emails: {scoreSummary.malformedEmails}</span>
+            <span>Clean Rows: {scoreSummary.cleanRows}</span>
+            <span>Action: {activeScoreEvent?.action_type ?? "NONE"}</span>
+            <span>Event: {activeScoreEvent?.race_event ?? "GRID_READY"}</span>
+          </div>
 
-            <RaceReplay
-              buffer={replayBuffer}
-              circuitPoints={circuitData.points}
-              rotationDeg={circuitData.rotation_deg}
-              mode={gamePhase === "replay" ? "replay" : "cleaning"}
-              liveTrackPosition={trackPosition}
-              liveSpeed={session.scoring.currentSpeed}
-              liveLayer={activeLayer}
-              liveMessage={liveRaceMessage}
-              onComplete={
-                gamePhase === "replay"
-                  ? (summary) => {
-                      setReplaySummary(summary);
-                      setGamePhase("results");
-                    }
-                  : undefined
-              }
+          <div className="telemetry-signal-banner">
+            <span className="telemetry-signal-label">Current Signal</span>
+            <p className="telemetry-signal-copy">{liveRaceMessage}</p>
+          </div>
+
+          <div className="telemetry-layout">
+            <RaceOverlay
+              scoringState={session.scoring}
+              lastScoreEvent={session.scoring.lastScoreEvent}
+              defaultSessionKey={9472}
+              width={860}
+              height={540}
             />
+          </div>
 
           <div className="grid-panels">
             <div className="source-section">
@@ -1016,52 +970,6 @@ export default function App() {
         </div>
       )}
 
-      {gamePhase === "results" && replaySummary && (
-        <div className="modal-backdrop">
-          <div className="modal-card finish-card" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-head finish-head">
-              <div className="modal-title-wrap">
-                <Trophy size={18} />
-                <h3>{replaySummary.tierAchieved === "gold" ? "Race Complete" : "Qualification Results"}</h3>
-              </div>
-            </div>
-            <div className="finish-body">
-              <p className="section-kicker">Replay Summary</p>
-              <h2>{replaySummary.tierAchieved === "gold" ? "Chequered Flag" : `${replaySummary.tierAchieved.toUpperCase()} Locked`}</h2>
-              <p className="finish-copy">
-                {replaySummary.tierAchieved === "gold"
-                  ? "The final replay is complete and the race is finished."
-                  : "Qualification replay complete. Continue cleaning to push for the next tier."}
-              </p>
-              <div className="finish-stats">
-                <div className="finish-stat">
-                  <span>Tier</span>
-                  <strong>{layerLabels[replaySummary.tierAchieved]}</strong>
-                </div>
-                <div className="finish-stat">
-                  <span>Lap Time</span>
-                  <strong>{formatLapTime(replaySummary.finalLapTimeMs)}</strong>
-                </div>
-                <div className="finish-stat">
-                  <span>Quality</span>
-                  <strong>{replaySummary.finalQualityScore}</strong>
-                </div>
-              </div>
-            </div>
-            <div className="modal-footer finish-footer">
-              {replaySummary.tierAchieved === "gold" ? (
-                <button className="modal-qualify-button" onClick={resetGame}>
-                  Restart Race
-                </button>
-              ) : (
-                <button className="modal-qualify-button" onClick={() => setGamePhase("cleaning")}>
-                  Continue Cleaning
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

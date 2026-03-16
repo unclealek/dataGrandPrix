@@ -345,10 +345,15 @@ button:active:not(:disabled) {
   margin-top: 18px;
 }
 
+.telemetry-header {
+  justify-content: flex-start;
+}
+
 .telemetry-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 18px;
 }
 
 .race-meta {
@@ -366,6 +371,369 @@ button:active:not(:disabled) {
   font-size: 0.84rem;
   letter-spacing: 0.05em;
   font-family: var(--font-euro);
+}
+
+.telemetry-layout {
+  margin-top: 18px;
+}
+
+.telemetry-signal-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(10, 13, 19, 0.42);
+}
+
+.telemetry-signal-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-family: var(--font-racing);
+  white-space: nowrap;
+}
+
+.telemetry-signal-copy {
+  color: var(--text);
+  font-family: var(--font-euro);
+  line-height: 1.4;
+}
+
+.live-race-shell,
+.live-race-picker,
+.live-race-loading,
+.live-race-error {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 13, 19, 0.48);
+}
+
+.live-race-shell {
+  padding: 10px;
+}
+
+.live-race-stage {
+  display: grid;
+  gap: 14px;
+}
+
+.live-race-header,
+.live-race-controls,
+.live-race-meta-inline,
+.user-hud-row,
+.live-board-row {
+  display: flex;
+  align-items: center;
+}
+
+.live-race-header,
+.live-race-controls {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.live-race-header {
+  padding: 4px 6px 0;
+}
+
+.live-race-meta-inline {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.live-race-meta-inline span {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-race-canvas-wrap {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(0, 229, 255, 0.08), transparent 28%),
+    radial-gradient(circle at 82% 18%, rgba(255, 213, 76, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(21, 27, 36, 0.98), rgba(12, 16, 23, 0.98));
+}
+
+.live-track-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.live-race-hud-slot,
+.live-race-board-slot {
+  position: absolute;
+  top: 14px;
+}
+
+.live-race-hud-slot {
+  left: 14px;
+}
+
+.live-race-board-slot {
+  right: 14px;
+}
+
+.live-race-driver-card {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  min-width: 240px;
+  padding: 12px 14px;
+  backdrop-filter: blur(8px);
+  background: rgba(9, 12, 17, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.live-race-driver-head {
+  display: grid;
+  gap: 4px;
+}
+
+.live-race-driver-head strong {
+  font-family: var(--font-racing);
+  letter-spacing: 0.12em;
+}
+
+.live-race-driver-head span {
+  color: var(--muted);
+  font-family: var(--font-euro);
+}
+
+.live-race-driver-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.live-race-driver-stats span {
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.user-hud,
+.live-board {
+  backdrop-filter: blur(8px);
+  background: rgba(9, 12, 17, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+.user-hud {
+  width: 240px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.user-hud-row {
+  gap: 10px;
+}
+
+.user-hud-row.compact {
+  justify-content: space-between;
+}
+
+.user-hud-label,
+.live-board-title {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-family: var(--font-racing);
+}
+
+.user-hud-value {
+  color: var(--text);
+  font-family: var(--font-euro);
+}
+
+.user-hud-position {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.user-hud-position-label {
+  font-size: 1.2rem;
+  color: var(--muted);
+}
+
+.user-hud-position-value {
+  font-size: 3rem;
+  line-height: 1;
+  font-family: var(--font-redzone);
+  font-style: italic;
+}
+
+.user-hud-bar {
+  flex: 1;
+  height: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.user-hud-bar-fill {
+  height: 100%;
+  background: #00cc44;
+}
+
+.user-hud-bar-fill.cyan {
+  background: #00e5ff;
+}
+
+.user-hud-message {
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.08);
+  font-family: var(--font-euro);
+}
+
+.user-hud-message.penalty {
+  border-color: rgba(255, 68, 68, 0.45);
+  color: #ff7c72;
+  background: rgba(255, 68, 68, 0.08);
+}
+
+.live-board {
+  width: 180px;
+  padding: 12px;
+}
+
+.live-board-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.live-board-row {
+  gap: 10px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--font-euro);
+}
+
+.live-board-row.is-user {
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.live-board-row.is-out {
+  opacity: 0.55;
+}
+
+.live-board-pos {
+  width: 20px;
+  color: var(--muted);
+}
+
+.live-board-code {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.live-board-lap {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.live-board-out {
+  color: #ff7c72;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.live-race-play,
+.live-race-speed {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.live-race-scrubber {
+  flex: 1;
+}
+
+.live-race-speed-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.live-race-speed.active {
+  border-color: rgba(245, 197, 24, 0.55);
+  color: #f5c518;
+}
+
+.live-race-picker,
+.live-race-loading,
+.live-race-error {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.live-race-picker-title {
+  font-size: 1.5rem;
+  font-family: var(--font-racing);
+  text-transform: uppercase;
+}
+
+.live-race-picker-copy,
+.live-race-loading small,
+.live-race-error small {
+  color: var(--muted);
+  max-width: 42ch;
+}
+
+.live-race-session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  width: 100%;
+  margin-top: 18px;
+}
+
+.live-race-session-card {
+  min-height: 100px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: left;
+  display: grid;
+  gap: 6px;
+}
+
+.live-race-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.12);
+  border-top-color: #f5c518;
+  animation: spin 1s linear infinite;
 }
 
 .stat-card {
@@ -1231,9 +1599,19 @@ tbody tr:nth-child(odd) {
   }
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 980px) {
   .grid-panels {
     grid-template-columns: 1fr;
+  }
+
+  .telemetry-layout {
+    margin-top: 14px;
   }
 
   .section-header,
@@ -1260,11 +1638,42 @@ tbody tr:nth-child(odd) {
   }
 
   .telemetry-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .telemetry-signal-banner {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .finish-stats {
     grid-template-columns: 1fr;
+  }
+
+  .live-race-header,
+  .live-race-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .live-race-hud-slot,
+  .live-race-board-slot {
+    position: static;
+  }
+
+  .live-race-driver-card {
+    position: static;
+  }
+
+  .live-race-canvas-wrap {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .user-hud,
+  .live-board {
+    width: 100%;
   }
 
   .replay-meta {

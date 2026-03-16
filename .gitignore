@@ -2,4 +2,5 @@ node_modules
 dist
 .env
 .DS_Store
-
+*.tsbuildinfo
+f1-race-replay/.fastf1-cache/
