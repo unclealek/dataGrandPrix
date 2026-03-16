@@ -4,7 +4,7 @@ import type { DriverSnapshot, RaceField } from "./fetchRaceField";
 import {
   applyScoreEventToCarState,
   createInitialUserCarState,
-  ///createStagedUserCarState,
+  createStagedUserCarState,
   tickUserCar,
   type RaceDriverPosition,
   type UserCarState,
@@ -35,8 +35,6 @@ export interface LiveRaceState {
 export const USER_DRIVER_NUMBER = 0;
 export const USER_ACRONYM = "YOU";
 export const USER_COLOR = "#00e5ff";
-const START_SPREAD_WINDOW_MS = 8_000;
-const START_SPREAD_RANGE = 0.035;
 
 function interpolateProgress(from: number, to: number, ratio: number) {
   let delta = to - from;
@@ -45,11 +43,6 @@ function interpolateProgress(from: number, to: number, ratio: number) {
   }
   const value = from + delta * ratio;
   return value < 0 ? value + 1 : value >= 1 ? value - 1 : value;
-}
-
-function gridStartOffset(position: number) {
-  const clamped = Math.max(1, Math.min(20, position || 20));
-  return ((20 - clamped) / 19) * START_SPREAD_RANGE;
 }
 
 export function useLiveRace(
@@ -123,15 +116,6 @@ export function useLiveRace(
           gear: ratio > 0.5 ? to.gear : from.gear,
           drs: ratio > 0.5 ? to.drs : from.drs,
         };
-
-        if (timestamp < START_SPREAD_WINDOW_MS) {
-          const fade = 1 - timestamp / START_SPREAD_WINDOW_MS;
-          interpolated[driverNumber].trackProgress = interpolateProgress(
-            interpolated[driverNumber].trackProgress,
-            interpolated[driverNumber].trackProgress + gridStartOffset(interpolated[driverNumber].position),
-            fade,
-          );
-        }
       }
 
       return interpolated;
@@ -265,12 +249,7 @@ export function useLiveRace(
     startRace: () => {
       replayTimeRef.current = 0;
       setReplayTime(0);
-      const initial = createInitialUserCarState();
-      setUserCar(
-        scoringState && lastScoreEvent
-          ? applyScoreEventToCarState(initial, lastScoreEvent, scoringState)
-          : initial,
-      );
+      setUserCar(createStagedUserCarState(scoringState, lastScoreEvent));
       setIsPlaying(true);
     },
   };

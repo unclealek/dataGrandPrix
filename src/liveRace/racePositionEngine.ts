@@ -118,6 +118,28 @@ export function createInitialUserCarState(): UserCarState {
   };
 }
 
+export function createStagedUserCarState(
+  scoringState: SessionScoringState | null,
+  lastScoreEvent: ScoreEvent | null,
+): UserCarState {
+  const base = createInitialUserCarState();
+  if (!scoringState) {
+    return base;
+  }
+
+  const qualityScore = lastScoreEvent?.quality_score ?? base.qualityScore;
+  const hudMessage = lastScoreEvent?.hud_message ?? base.hudMessage;
+
+  return {
+    ...base,
+    speed: scoringState.currentSpeed,
+    fuel: scoringState.currentFuel,
+    qualityScore,
+    hudMessage,
+    position: scoreToPosition(qualityScore),
+  };
+}
+
 export function applyScoreEventToCarState(
   current: UserCarState,
   scoreEvent: ScoreEvent,

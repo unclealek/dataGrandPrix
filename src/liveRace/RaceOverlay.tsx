@@ -236,7 +236,6 @@ export function RaceOverlay({
           <div className="live-race-meta-inline">
             <span>{field.totalLaps} laps</span>
             <span>Session {field.sessionKey}</span>
-            <span className={`telemetry-mode telemetry-mode-${field.telemetryMode}`}>{field.telemetryMode}</span>
             <span>{opponentCount} drivers</span>
           </div>
         </div>
@@ -253,9 +252,6 @@ export function RaceOverlay({
               width={width}
               height={height}
             />
-            <div className="live-race-debug-badge">
-              {field.telemetryMode} · {opponentCount} opponents
-            </div>
             {startState !== "running" ? (
               <div className="live-race-start-overlay">
                 <div className="live-race-start-panel">

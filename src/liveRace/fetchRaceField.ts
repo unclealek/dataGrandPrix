@@ -22,7 +22,6 @@ export interface RaceField {
   sessionName: string;
   circuit: string;
   totalLaps: number;
-  telemetryMode: "live" | "hybrid" | "synthetic";
   drivers: Record<number, F1Driver>;
   timestamps: number[];
   frames: Record<number, Record<number, DriverSnapshot>>;
@@ -51,107 +50,6 @@ export async function listRaceSessions(year = 2024): Promise<SessionSummary[]> {
       circuit: String(session.circuit_short_name ?? session.location ?? "Unknown"),
       date: String(session.date_start ?? ""),
     }));
-}
-
-// ─── Dead reckoning constants ─────────────────────────────────────────────────
-
-// Average F1 race lap ~90s. At 1x replay we advance 1/90000 of the track per ms.
-// Each driver gets a slight spread based on their race position so they don't overlap.
-const BASE_PROGRESS_PER_MS = 1 / 90_000;
-
-// How much weight to give the real GPS frame vs the dead-reckoned position.
-// 0 = pure dead reckoning, 1 = snap to GPS.
-// 0.35 gives smooth motion that still follows real GPS when available.
-const GPS_BLEND_WEIGHT = 0.35;
-
-// Grid stagger: P1 starts ~0.035 ahead of P20 (spread across ~8m gaps on a 5km track)
-const GRID_STAGGER_RANGE = 0.035;
-
-// ─── Apply dead reckoning to a driver's frame sequence ───────────────────────
-//
-// Problem: OpenF1 GPS location is sparse (~3.7Hz) and the nearest-point lookup
-// often returns the same trackProgress for multiple consecutive timestamps,
-// making drivers look frozen even when time is advancing.
-//
-// Fix: maintain a "reckoned" position that always advances forward based on speed.
-// When a real GPS fix arrives, nudge toward it rather than snapping.
-//
-function applyDeadReckoning(
-  driverNumber: number,
-  timestamps: number[],
-  rawFrames: Record<number, Record<number, DriverSnapshot>>,
-  startingProgress: number,
-  totalLaps: number,
-): void {
-  let reckonedProgress = startingProgress;
-  let reckonedLap = 1;
-  let lastGpsProgress = startingProgress;
-  let lastGpsTimestamp = -1;
-
-  for (let i = 0; i < timestamps.length; i++) {
-    const ts = timestamps[i];
-    const frame = rawFrames[ts]?.[driverNumber];
-    if (!frame) continue;
-
-    const elapsedMs = i > 0 ? ts - timestamps[i - 1] : 0;
-
-    // Advance reckoned position based on driver's current speed
-    // Use their actual speed if available, fall back to a position-based estimate
-    const speedKmh = frame.speed > 0 ? frame.speed : 200 + ((driverNumber * 13) % 60);
-    // Convert km/h to track-fraction-per-ms:
-    // speedKmh / 3600 = km/s, typical F1 circuit ~5km, so fraction/s = speed/3600/5
-    // Simplified: we use BASE_PROGRESS_PER_MS scaled by speed/250 (250 = typical race speed)
-    const speedMultiplier = speedKmh / 250;
-    const progressDelta = BASE_PROGRESS_PER_MS * speedMultiplier * elapsedMs;
-
-    reckonedProgress += progressDelta;
-
-    // Lap rollover
-    if (reckonedProgress >= 1) {
-      reckonedProgress -= 1;
-      reckonedLap = Math.min(totalLaps, reckonedLap + 1);
-    }
-
-    // GPS fix available: blend toward it
-    const rawGpsProgress = frame.trackProgress;
-    const gpsChanged = Math.abs(rawGpsProgress - lastGpsProgress) > 0.001 || lastGpsTimestamp === -1;
-
-    if (gpsChanged) {
-      // Real GPS data arrived — nudge reckoned position toward it
-      // Handle track wrap-around (e.g. reckoned=0.98, gps=0.02 is a small forward delta)
-      let gpsDelta = rawGpsProgress - reckonedProgress;
-      if (gpsDelta < -0.5) gpsDelta += 1;
-      if (gpsDelta > 0.5) gpsDelta -= 1;
-
-      // Only blend forward — never pull the car backwards from a GPS glitch
-      if (gpsDelta > -0.05) {
-        reckonedProgress += gpsDelta * GPS_BLEND_WEIGHT;
-        if (reckonedProgress >= 1) { reckonedProgress -= 1; reckonedLap = Math.min(totalLaps, reckonedLap + 1); }
-        if (reckonedProgress < 0) reckonedProgress += 1;
-      }
-
-      lastGpsProgress = rawGpsProgress;
-      lastGpsTimestamp = ts;
-    }
-
-    // Write the smoothed progress back into the frame
-    rawFrames[ts][driverNumber] = {
-      ...frame,
-      trackProgress: reckonedProgress,
-      lap: Math.max(frame.lap, reckonedLap),
-    };
-  }
-}
-
-// ─── Compute grid starting offsets based on qualifying/race start order ───────
-//
-// Drivers starting P1 are slightly ahead on track, P20 slightly behind.
-// This prevents all cars overlapping at trackProgress=0 at race start.
-//
-function gridStartProgress(raceStartPosition: number): number {
-  // P1 gets the largest offset (front of grid), P20 gets smallest
-  const normalised = (20 - raceStartPosition) / 19; // 0 for P20, 1 for P1
-  return normalised * GRID_STAGGER_RANGE;
 }
 
 export async function fetchRaceField(
@@ -229,18 +127,9 @@ export async function fetchRaceField(
 
   log("Processing data...");
 
-  const telemetryMode: RaceField["telemetryMode"] =
-    hasLocationData && carData.length > 0 && positions.length > 0
-      ? "live"
-      : hasLocationData || carData.length > 0 || positions.length > 0
-        ? "hybrid"
-        : "synthetic";
-
   const drivers: Record<number, F1Driver> = {};
-  const driverOrder: number[] = [];
   for (const driver of driverData) {
     const number = Number(driver.driver_number);
-    driverOrder.push(number);
     drivers[number] = {
       number,
       acronym: String(driver.name_acronym ?? `D${number}`),
@@ -303,7 +192,7 @@ export async function fetchRaceField(
     };
   }
 
-  type OpenF1TimedRecord = { date: string;[key: string]: unknown };
+  type OpenF1TimedRecord = { date: string; [key: string]: unknown };
   type RecordsByDriver = Record<number, OpenF1TimedRecord[]>;
 
   const locationsByDriver: RecordsByDriver = {};
@@ -410,27 +299,17 @@ export async function fetchRaceField(
     return Math.max(0, Math.min(0.999, (timestampMs - lapStart) / duration));
   }
 
-  // ── Determine race start positions from first available position data ────────
-  // Used to stagger grid starting offsets so cars don't all overlap at t=0.
-  const startingPositions: Record<number, number> = {};
-  const fallbackGridOrder = driverOrder.length > 0 ? driverOrder : Object.keys(drivers).map(Number).sort((a, b) => a - b);
-  for (const [index, driverNumber] of fallbackGridOrder.entries()) {
-    const firstPos = positionsByDriver[driverNumber]?.[0];
-    startingPositions[driverNumber] = firstPos ? Number(firstPos.position) : index + 1;
-  }
-
   const sampleIntervalMs = 1000;
   const fallbackEndTime =
     laps.length > 0
       ? Math.max(
-        ...laps.map((lap) => {
-          const lapStart = new Date(String(lap.date_start)).getTime();
-          const lapDurationMs = Number(lap.lap_duration) * 1000 || 90_000;
-          return lapStart + lapDurationMs;
-        }),
-      )
+          ...laps.map((lap) => {
+            const lapStart = new Date(String(lap.date_start)).getTime();
+            const lapDurationMs = Number(lap.lap_duration) * 1000 || 90_000;
+            return lapStart + lapDurationMs;
+          }),
+        )
       : origin + 90_000;
-
   const timestamps = Array.from(
     new Set(
       (
@@ -440,18 +319,13 @@ export async function fetchRaceField(
             ? positions
             : carData.length > 0
               ? carData
-              : Array.from(
-                { length: Math.max(1, Math.ceil((fallbackEndTime - origin) / sampleIntervalMs)) },
-                (_, index) => ({ date: new Date(origin + index * sampleIntervalMs).toISOString() }),
-              )
-      ).map(
-        (item) =>
-          Math.round((new Date(String(item.date)).getTime() - origin) / sampleIntervalMs) * sampleIntervalMs,
-      ),
+              : Array.from({ length: Math.max(1, Math.ceil((fallbackEndTime - origin) / sampleIntervalMs)) }, (_, index) => ({
+                  date: new Date(origin + index * sampleIntervalMs).toISOString(),
+                }))
+      ).map((item) => Math.round((new Date(String(item.date)).getTime() - origin) / sampleIntervalMs) * sampleIntervalMs),
     ),
   ).sort((a, b) => a - b);
 
-  // ── Build raw frames (same as before) ────────────────────────────────────────
   const frames: Record<number, Record<number, DriverSnapshot>> = {};
 
   for (const timestamp of timestamps) {
@@ -471,12 +345,12 @@ export async function fetchRaceField(
           trackProgress = pointToTrackProgress(Number(location.x), Number(location.y));
         }
       } else {
-        const positionValue = Number(position?.position ?? startingPositions[driverNumber] ?? 20);
-        const stagger = ((20 - positionValue) / 19) * GRID_STAGGER_RANGE;
+        const positionValue = Number(position?.position ?? 20);
+        const stagger = ((20 - positionValue) / 20) * 0.035;
         trackProgress = (lapProgressAt(driverNumber, absoluteTimestamp) + stagger) % 1;
       }
 
-      const fallbackPosition = Math.max(1, Math.min(20, startingPositions[driverNumber] ?? fallbackGridOrder.indexOf(driverNumber) + 1));
+      const fallbackPosition = Math.max(1, Math.min(20, driverNumber));
       const fallbackSpeed = 210 + ((driverNumber * 17) % 85);
       const fallbackGear = 6 + (driverNumber % 3);
 
@@ -492,23 +366,11 @@ export async function fetchRaceField(
     }
   }
 
-  // ── Apply dead reckoning pass over every driver ───────────────────────────
-  // This is the key fix: after building raw frames, we walk each driver's
-  // timeline and ensure their trackProgress always advances monotonically.
-  // Sparse or repeated GPS values no longer cause frozen cars.
-  log("Smoothing opponent motion...");
-  for (const driverNumber of Object.keys(drivers).map(Number)) {
-    const startPos = startingPositions[driverNumber] ?? 20;
-    const startProgress = gridStartProgress(startPos);
-    applyDeadReckoning(driverNumber, timestamps, frames, startProgress, totalLaps);
-  }
-
   return {
     sessionKey,
     sessionName: String(session.session_name ?? session.session_type ?? "Race"),
     circuit: String(session.circuit_short_name ?? session.location ?? "Unknown"),
     totalLaps,
-    telemetryMode,
     drivers,
     timestamps,
     frames,
