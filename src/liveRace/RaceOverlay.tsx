@@ -255,37 +255,6 @@ export function RaceOverlay({
           <aside className="live-race-sidebar">
             <UserHUD userCar={race.userCar} totalLaps={field.totalLaps} leadLap={race.leadLap} />
 
-            <div className="live-race-controls">
-              <button
-                className="live-race-play"
-                onClick={startState === "running" ? race.togglePlay : undefined}
-                disabled={startState !== "running"}
-              >
-                {race.isPlaying ? "Pause" : "Play"}
-              </button>
-              <input
-                className="live-race-scrubber"
-                type="range"
-                min={0}
-                max={field.timestamps[field.timestamps.length - 1] ?? 0}
-                step={1000}
-                value={race.replayTime}
-                onChange={(event) => race.seek(Number(event.target.value))}
-                disabled={startState !== "running"}
-              />
-              <div className="live-race-speed-group">
-                {([1, 2, 4, 8, 16] as const).map((value) => (
-                  <button
-                    key={value}
-                    className={`live-race-speed${race.speed === value ? " active" : ""}`}
-                    onClick={() => race.setSpeed(value)}
-                  >
-                    {value}x
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {activeDriverInfo ? (
               <div className="live-race-driver-card">
                 <div className="live-race-driver-head">

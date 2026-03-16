@@ -420,7 +420,6 @@ button:active:not(:disabled) {
 }
 
 .live-race-header,
-.live-race-controls,
 .live-race-meta-inline,
 .user-hud-row,
 .live-board-row {
@@ -428,8 +427,7 @@ button:active:not(:disabled) {
   align-items: center;
 }
 
-.live-race-header,
-.live-race-controls {
+.live-race-header {
   justify-content: space-between;
   gap: 12px;
 }
@@ -706,36 +704,6 @@ button:active:not(:disabled) {
   color: #ff7c72;
   font-size: 0.72rem;
   letter-spacing: 0.08em;
-}
-
-.live-race-play,
-.live-race-speed {
-  min-height: 38px;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-}
-
-.live-race-play:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.live-race-scrubber {
-  flex: 1;
-  min-width: 0;
-}
-
-.live-race-speed-group {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.live-race-speed.active {
-  border-color: rgba(245, 197, 24, 0.55);
-  color: #f5c518;
 }
 
 .live-race-picker,
@@ -1702,8 +1670,7 @@ tbody tr:nth-child(odd) {
     grid-template-columns: 1fr;
   }
 
-  .live-race-header,
-  .live-race-controls {
+  .live-race-header {
     flex-direction: column;
     align-items: stretch;
   }

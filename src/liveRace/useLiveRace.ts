@@ -9,8 +9,6 @@ import {
   type UserCarState,
 } from "./racePositionEngine";
 
-export type ReplaySpeed = 1 | 2 | 4 | 8 | 16;
-
 export interface LeaderboardEntry {
   isUser: boolean;
   driverNumber: number;
@@ -29,13 +27,8 @@ export interface LiveRaceState {
   replayTime: number;
   leadLap: number;
   isPlaying: boolean;
-  speed: ReplaySpeed;
   progress: number;
   startRace: () => void;
-  pauseRace: () => void;
-  togglePlay: () => void;
-  setSpeed: (speed: ReplaySpeed) => void;
-  seek: (ms: number) => void;
 }
 
 export const USER_DRIVER_NUMBER = 0;
@@ -58,7 +51,6 @@ export function useLiveRace(
 ): LiveRaceState {
   const [replayTime, setReplayTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState<ReplaySpeed>(1);
   const [userCar, setUserCar] = useState<UserCarState>(createInitialUserCarState);
 
   const rafRef = useRef<number | null>(null);
@@ -131,7 +123,6 @@ export function useLiveRace(
       setReplayTime(0);
       replayTimeRef.current = 0;
       setIsPlaying(false);
-      setSpeed(1);
       setUserCar(createInitialUserCarState());
       scoreEventRef.current = null;
     }
@@ -152,7 +143,7 @@ export function useLiveRace(
       }
 
       if (lastRealTimeRef.current !== null) {
-        const elapsedMs = (realNow - lastRealTimeRef.current) * speed;
+        const elapsedMs = realNow - lastRealTimeRef.current;
         const nextReplayTime = Math.min(maxTime, replayTimeRef.current + elapsedMs);
         replayTimeRef.current = nextReplayTime;
         setReplayTime(nextReplayTime);
@@ -177,7 +168,7 @@ export function useLiveRace(
       lastRealTimeRef.current = realNow;
       rafRef.current = window.requestAnimationFrame(tick);
     },
-    [field, getFramesAt, maxTime, speed],
+    [field, getFramesAt, maxTime],
   );
 
   useEffect(() => {
@@ -196,21 +187,6 @@ export function useLiveRace(
       }
     };
   }, [isPlaying, tick]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-      if (event.code === "Space") {
-        event.preventDefault();
-        setIsPlaying((current) => !current);
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   const realDriverFrames = useMemo(() => getFramesAt(replayTime), [getFramesAt, replayTime]);
 
@@ -264,21 +240,12 @@ export function useLiveRace(
     replayTime,
     leadLap,
     isPlaying,
-    speed,
     progress: maxTime > 0 ? replayTime / maxTime : 0,
     startRace: () => {
       replayTimeRef.current = 0;
       setReplayTime(0);
       setUserCar(createInitialUserCarState());
       setIsPlaying(true);
-    },
-    pauseRace: () => setIsPlaying(false),
-    togglePlay: () => setIsPlaying((current) => !current),
-    setSpeed,
-    seek: (timeMs) => {
-      const clamped = Math.max(0, Math.min(maxTime, timeMs));
-      replayTimeRef.current = clamped;
-      setReplayTime(clamped);
     },
   };
 }
