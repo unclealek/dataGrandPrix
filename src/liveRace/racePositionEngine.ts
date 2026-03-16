@@ -4,8 +4,8 @@ import type { ScoreEvent, SessionScoringState } from "../types";
 // Real drivers are staggered there. The user car starts at progress 0 (back of grid)
 // and earns position through SQL cleaning, which is the game mechanic.
 const BASE_PROGRESS_PER_MS = 1 / 90_000;
-const SPEED_SCALE_MIN = 0.6;
-const SPEED_SCALE_MAX = 1.4;
+const SPEED_SCALE_MIN = 0.55;
+const SPEED_SCALE_MAX = 1.05;
 const EVENT_FLASH_DURATION_MS = 2000;
 
 function immediateProgressDelta(scoreEvent: ScoreEvent, current: UserCarState) {
@@ -13,22 +13,22 @@ function immediateProgressDelta(scoreEvent: ScoreEvent, current: UserCarState) {
   const speedGain = Math.max(0, scoreEvent.speed_delta);
 
   if (scoreEvent.action_category === "D") {
-    return -0.01;
+    return -0.002;
   }
 
   if (scoreEvent.race_event === "CLEAN_LAP") {
-    return 0.07;
+    return 0.006;
   }
 
   if (scoreEvent.action_category === "A") {
-    return 0.018 + qualityGain * 0.001 + speedGain * 0.0004;
+    return Math.min(0.003, 0.0012 + qualityGain * 0.0001 + speedGain * 0.00004);
   }
 
   if (scoreEvent.action_category === "B") {
-    return 0.026 + qualityGain * 0.0012 + speedGain * 0.0005;
+    return Math.min(0.0045, 0.002 + qualityGain * 0.00012 + speedGain * 0.00005);
   }
 
-  return 0.006;
+  return 0.0008;
 }
 
 export type VisualCueType =
@@ -64,7 +64,7 @@ export interface RaceDriverPosition {
 }
 
 export function speedToMultiplier(scoringSpeed: number) {
-  const normalized = Math.max(0, Math.min(1, (scoringSpeed - 160) / 160));
+  const normalized = Math.max(0, Math.min(1, (scoringSpeed - 180) / 140));
   return SPEED_SCALE_MIN + normalized * (SPEED_SCALE_MAX - SPEED_SCALE_MIN);
 }
 
@@ -79,7 +79,7 @@ export function calcRacePosition(userProgress: number, userLap: number, realDriv
 }
 
 export function scoreToPosition(qualityScore: number) {
-  return Math.round(20 - (qualityScore / 100) * 19);
+  return Math.round(20 - (qualityScore / 100) * 10);
 }
 
 export function raceEventToVisualCue(raceEvent: string): VisualCueType {
@@ -158,7 +158,7 @@ export function applyScoreEventToCarState(
     cueTimeRemaining: visualCue === "NONE" ? 0 : EVENT_FLASH_DURATION_MS,
     isPenalty: scoreEvent.action_category === "D",
     hudMessage: scoreEvent.hud_message,
-    position: scoreToPosition(scoreEvent.quality_score),
+    position: current.position,
   };
 }
 
