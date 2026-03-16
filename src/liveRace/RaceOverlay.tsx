@@ -21,8 +21,8 @@ export function RaceOverlay({
   scoringState,
   lastScoreEvent,
   defaultSessionKey = 9472,
-  width = 860,
-  height = 620,
+  width = 640,
+  height = 440,
 }: Props) {
   const [loadState, setLoadState] = useState<LoadState>(defaultSessionKey ? "loading" : "pick");
   const [field, setField] = useState<RaceField | null>(null);
@@ -198,15 +198,22 @@ export function RaceOverlay({
 
   const activeDriverNumber = hoveredDriverNumber ?? selectedDriverNumber;
   const opponentCount = Object.keys(race.realDriverFrames).length;
+  const strollDriver = Object.values(field.drivers).find((driver) => driver.fullName.toLowerCase().includes("stroll"));
+  const strollFrame = strollDriver ? race.realDriverFrames[strollDriver.number] : null;
+  const strollLeaderboardEntry = strollDriver
+    ? race.leaderboard.find((entry) => !entry.isUser && entry.driverNumber === strollDriver.number)
+    : null;
   const driverMonitorRows = [
     {
       driverNumber: USER_DRIVER_NUMBER,
       acronym: "YOU",
+      fullName: "Your Cleaning Run",
       teamColor: "#00e5ff",
       speed: race.userCar.speed,
       fuel: Math.round(race.userCar.fuel),
       lap: race.userCar.lap,
       isUser: true,
+      isStroll: false,
     },
     ...Object.entries(race.realDriverFrames)
       .map(([driverNumberString, frame]) => {
@@ -218,11 +225,13 @@ export function RaceOverlay({
         return {
           driverNumber,
           acronym: driver.acronym,
+          fullName: driver.fullName,
           teamColor: driver.teamColor,
           speed: frame.speed,
           fuel: null,
           lap: frame.lap,
           isUser: false,
+          isStroll: strollDriver?.number === driverNumber,
         };
       })
       .filter((row): row is NonNullable<typeof row> => row !== null)
@@ -317,44 +326,66 @@ export function RaceOverlay({
             ) : null}
           </div>
 
-          <aside className="live-race-sidebar">
-            <UserHUD userCar={race.userCar} totalLaps={field.totalLaps} leadLap={race.leadLap} />
+          <aside className="live-race-sideband">
+            <div className="live-race-sideband-top">
+              <div className="live-race-stats-stack">
+                <UserHUD userCar={race.userCar} totalLaps={field.totalLaps} leadLap={race.leadLap} />
 
-            {activeDriverInfo ? (
-              <div className="live-race-driver-card">
-                <div className="live-race-driver-head">
-                  <strong style={{ color: activeDriverInfo.teamColor }}>{activeDriverInfo.acronym}</strong>
-                  <span>{activeDriverInfo.fullName}</span>
+                {activeDriverInfo ? (
+                  <div className="live-race-driver-card">
+                    <div className="live-race-driver-head">
+                      <strong style={{ color: activeDriverInfo.teamColor }}>{activeDriverInfo.acronym}</strong>
+                      <span>{activeDriverInfo.fullName}</span>
+                    </div>
+                    <div className="live-race-driver-stats">
+                      <span>P{activeDriverInfo.position}</span>
+                      <span>L{activeDriverInfo.lap}</span>
+                      <span>{Math.round(activeDriverInfo.speed)} km/h</span>
+                      {activeDriverInfo.gear !== null ? <span>G{activeDriverInfo.gear}</span> : null}
+                      {activeDriverInfo.drs !== null ? <span>{activeDriverInfo.drs ? "DRS ON" : "DRS OFF"}</span> : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="live-race-leaderboard-wrap">
+                <LiveLeaderboard leaderboard={race.leaderboard} />
+              </div>
+
+              <div className="live-race-monitor live-race-monitor-side">
+                <div className="live-race-monitor-sticky">
+                  <div className="live-race-monitor-head">
+                    <p className="section-kicker">Temporary Monitor</p>
+                    <span>Speed for all drivers, fuel only for YOU</span>
+                  </div>
+                  {strollDriver && strollFrame && strollLeaderboardEntry ? (
+                    <div className="live-race-monitor-spotlight">
+                      <strong style={{ color: strollDriver.teamColor }}>{strollDriver.fullName}</strong>
+                      <span>P{strollLeaderboardEntry.position}</span>
+                      <span>L{strollFrame.lap}</span>
+                      <span>{Math.round(strollFrame.speed)} km/h</span>
+                      <span>{strollFrame.trackProgress.toFixed(3)} prog</span>
+                    </div>
+                  ) : null}
                 </div>
-                <div className="live-race-driver-stats">
-                  <span>P{activeDriverInfo.position}</span>
-                  <span>L{activeDriverInfo.lap}</span>
-                  <span>{Math.round(activeDriverInfo.speed)} km/h</span>
-                  {activeDriverInfo.gear !== null ? <span>G{activeDriverInfo.gear}</span> : null}
-                  {activeDriverInfo.drs !== null ? <span>{activeDriverInfo.drs ? "DRS ON" : "DRS OFF"}</span> : null}
+                <div className="live-race-monitor-grid">
+                  {driverMonitorRows.map((row) => (
+                    <div
+                      key={row.driverNumber}
+                      className={
+                        `live-race-monitor-row${row.isUser ? " live-race-monitor-row-user" : ""}${row.isStroll ? " live-race-monitor-row-stroll" : ""}`
+                      }
+                    >
+                      <strong style={{ color: row.teamColor }}>{row.acronym}</strong>
+                      <span>L{row.lap}</span>
+                      <span>{Math.round(row.speed)} km/h</span>
+                      <span>{row.fuel === null ? "fuel --" : `fuel ${row.fuel}`}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ) : null}
-
-            <LiveLeaderboard leaderboard={race.leaderboard} />
+            </div>
           </aside>
-        </div>
-
-        <div className="live-race-monitor">
-          <div className="live-race-monitor-head">
-            <p className="section-kicker">Temporary Monitor</p>
-            <span>Speed for all drivers, fuel only for YOU</span>
-          </div>
-          <div className="live-race-monitor-grid">
-            {driverMonitorRows.map((row) => (
-              <div key={row.driverNumber} className={`live-race-monitor-row${row.isUser ? " live-race-monitor-row-user" : ""}`}>
-                <strong style={{ color: row.teamColor }}>{row.acronym}</strong>
-                <span>L{row.lap}</span>
-                <span>{Math.round(row.speed)} km/h</span>
-                <span>{row.fuel === null ? "fuel --" : `fuel ${row.fuel}`}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>
