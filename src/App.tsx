@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { ArrowRight, CarFront, Check, Flag, History, Lock, RotateCcw, Trophy, Undo2, X, Zap } from "lucide-react";
 import { FunctionsHttpError, FunctionsRelayError, FunctionsFetchError } from "@supabase/supabase-js";
+import RaceReplay from "./RaceReplay";
 import { raceData, STARTER_SQL } from "./data";
+import circuitData from "./generated/circuit.json";
+import { appendReplayEntry, advanceTrackPosition, createReplayBuffer, finaliseReplayBuffer, formatLapTime, type ReplayBuffer, type ReplaySummary } from "./lib/replay";
 import { applyConfirmedScore, createInitialScoringState, scorePreview, scoreQualify, summarizeScore } from "./lib/scoring";
 import { supabase } from "./lib/supabase";
 import type {
@@ -34,6 +37,7 @@ const layerTheme: Record<Layer, { color: string; accentClass: string }> = {
 const queryPresets = [
   {
     label: "Normalization",
+    icon: "🏎️",
     sql: `SELECT
   id,
   first_name,
@@ -56,6 +60,7 @@ FROM current_table;`,
   },
   {
     label: "Amount Clean",
+    icon: "🏎️",
     sql: `SELECT
   id,
   first_name,
@@ -80,6 +85,7 @@ FROM current_table;`,
   },
   {
     label: "Email Repair",
+    icon: "🏎️",
     sql: `SELECT
   id,
   TRIM(first_name) AS first_name,
@@ -96,6 +102,7 @@ FROM current_table;`,
   },
   {
     label: "Date Format",
+    icon: "🏎️",
     sql: `SELECT
   id,
   first_name,
@@ -113,6 +120,7 @@ FROM current_table;`,
   },
   {
     label: "Fill Amount",
+    icon: "🏎️",
     sql: `SELECT
   id,
   first_name,
@@ -126,6 +134,7 @@ FROM current_table;`,
   },
   {
     label: "Fill First Name",
+    icon: "🏎️",
     sql: `SELECT
   id,
   COALESCE(first_name, 'unknown') AS first_name,
@@ -139,6 +148,7 @@ FROM current_table;`,
   },
   {
     label: "Fill Country",
+    icon: "🏎️",
     sql: `SELECT
   id,
   first_name,
@@ -195,12 +205,10 @@ export default function App() {
   const [previewSuccessFlash, setPreviewSuccessFlash] = useState(false);
   const [selectedQualifyTarget, setSelectedQualifyTarget] = useState<Layer | null>(null);
   const [pendingScoreEvent, setPendingScoreEvent] = useState<ScoreEvent | null>(null);
-  const [raceFinished, setRaceFinished] = useState<{
-    layer: Layer;
-    score: number;
-    message: string;
-    isPerfectLap: boolean;
-  } | null>(null);
+  const [replayBuffer, setReplayBuffer] = useState<ReplayBuffer>(createReplayBuffer);
+  const [trackPosition, setTrackPosition] = useState(0);
+  const [gamePhase, setGamePhase] = useState<"cleaning" | "replay" | "results">("cleaning");
+  const [replaySummary, setReplaySummary] = useState<ReplaySummary | null>(null);
   const [qualifyArmed, setQualifyArmed] = useState<Record<Layer, boolean>>({
     bronze: false,
     silver: false,
@@ -489,6 +497,13 @@ export default function App() {
     });
     setPendingScoreEvent(null);
     setMessage({ type: "success", text: `${pendingScoreEvent.hud_message} Preview confirmed into the active table.` });
+    setReplayBuffer((prev) =>
+      appendReplayEntry(prev, pendingScoreEvent, {
+        speedAtEvent: Math.max(0, session.scoring.currentSpeed + pendingScoreEvent.speed_delta),
+        trackPosition,
+      }),
+    );
+    setTrackPosition((prev) => advanceTrackPosition(prev, pendingScoreEvent));
     setQualifyArmed((prev) => ({ ...prev, [activeLayer]: true }));
   }
 
@@ -556,6 +571,8 @@ export default function App() {
       return;
     }
 
+    const finalQualityScore = qualifyEvent?.quality_score ?? scoreSummary.score;
+    const finalLockedErrors = qualifyEvent?.locked_errors ?? [];
     setSession((prev) => {
       const promoted = createSnapshot(targetLayer, cloneRows(currentVersion.rows), 1, currentVersion.columns);
       const qualifyReadiness =
@@ -611,6 +628,9 @@ export default function App() {
         },
       };
     });
+    setReplayBuffer((prev) => finaliseReplayBuffer(prev, targetLayer, finalQualityScore, finalLockedErrors));
+    setReplaySummary(null);
+    setGamePhase("replay");
     setIsQualifyOpen(false);
     setSelectedQualifyTarget(null);
     setMessage({
@@ -620,17 +640,6 @@ export default function App() {
           ? `${qualifyEvent.hud_message} Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`
           : `Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`,
     });
-    if (targetLayer === "gold") {
-      setRaceFinished({
-        layer: targetLayer,
-        score: qualifyEvent?.quality_score ?? scoreSummary.score,
-        message:
-          qualifyEvent?.action_type === "CLEAN_LAP"
-            ? "Perfect lap. The Gold table is locked in and the race is complete."
-            : "Gold qualification complete. The race is finished.",
-        isPerfectLap: qualifyEvent?.action_type === "CLEAN_LAP",
-      });
-    }
     setQualifyArmed((prev) => ({ ...prev, [targetLayer]: false }));
     setPendingScoreEvent(null);
   }
@@ -643,7 +652,10 @@ export default function App() {
     setPreviewSuccessFlash(false);
     setSelectedQualifyTarget(null);
     setPendingScoreEvent(null);
-    setRaceFinished(null);
+    setReplayBuffer(createReplayBuffer());
+    setTrackPosition(0);
+    setGamePhase("cleaning");
+    setReplaySummary(null);
   }
 
   return (
@@ -709,6 +721,18 @@ export default function App() {
               <span>Action: {activeScoreEvent?.action_type ?? "NONE"}</span>
               <span>Event: {activeScoreEvent?.race_event ?? "GRID_READY"}</span>
             </div>
+
+            {gamePhase === "replay" && (
+              <RaceReplay
+                buffer={replayBuffer}
+                circuitPoints={circuitData.points}
+                rotationDeg={circuitData.rotation_deg}
+                onComplete={(summary) => {
+                  setReplaySummary(summary);
+                  setGamePhase("results");
+                }}
+              />
+            )}
 
           <div className="grid-panels">
             <div className="source-section">
@@ -808,7 +832,7 @@ export default function App() {
               </button>
             </div>
             <button className="run-button editor-tab-run" onClick={runQuery} disabled={isRunning}>
-              <CarFront size={16} />
+              <span aria-hidden="true">🏎️</span>
               {isRunning ? "Running..." : "Run"}
             </button>
           </div>
@@ -820,6 +844,7 @@ export default function App() {
                 className="query-preset-button"
                 onClick={() => setSql(preset.sql)}
               >
+                <span aria-hidden="true">{preset.icon}</span>
                 {preset.label}
               </button>
             ))}
@@ -956,44 +981,48 @@ export default function App() {
         </div>
       )}
 
-      {raceFinished && (
-        <div className="modal-backdrop" onClick={() => setRaceFinished(null)}>
+      {gamePhase === "results" && replaySummary && (
+        <div className="modal-backdrop">
           <div className="modal-card finish-card" onClick={(event) => event.stopPropagation()}>
             <div className="modal-head finish-head">
               <div className="modal-title-wrap">
                 <Trophy size={18} />
-                <h3>Race Complete</h3>
+                <h3>{replaySummary.tierAchieved === "gold" ? "Race Complete" : "Qualification Results"}</h3>
               </div>
-              <button className="close-button" onClick={() => setRaceFinished(null)}>
-                <X size={18} />
-              </button>
             </div>
             <div className="finish-body">
-              <p className="section-kicker">Final Classification</p>
-              <h2>{raceFinished.isPerfectLap ? "Perfect Gold Finish" : "Gold Qualification Locked"}</h2>
-              <p className="finish-copy">{raceFinished.message}</p>
+              <p className="section-kicker">Replay Summary</p>
+              <h2>{replaySummary.tierAchieved === "gold" ? "Chequered Flag" : `${replaySummary.tierAchieved.toUpperCase()} Locked`}</h2>
+              <p className="finish-copy">
+                {replaySummary.tierAchieved === "gold"
+                  ? "The final replay is complete and the race is finished."
+                  : "Qualification replay complete. Continue cleaning to push for the next tier."}
+              </p>
               <div className="finish-stats">
                 <div className="finish-stat">
-                  <span>Final Layer</span>
-                  <strong>{layerLabels[raceFinished.layer]}</strong>
+                  <span>Tier</span>
+                  <strong>{layerLabels[replaySummary.tierAchieved]}</strong>
                 </div>
                 <div className="finish-stat">
-                  <span>Final Quality</span>
-                  <strong>{raceFinished.score}</strong>
+                  <span>Lap Time</span>
+                  <strong>{formatLapTime(replaySummary.finalLapTimeMs)}</strong>
                 </div>
                 <div className="finish-stat">
-                  <span>Race Event</span>
-                  <strong>{raceFinished.isPerfectLap ? "CLEAN_LAP" : "QUALIFIED"}</strong>
+                  <span>Quality</span>
+                  <strong>{replaySummary.finalQualityScore}</strong>
                 </div>
               </div>
             </div>
             <div className="modal-footer finish-footer">
-              <button className="steel-button" onClick={() => setRaceFinished(null)}>
-                Review Final Grid
-              </button>
-              <button className="modal-qualify-button" onClick={resetGame}>
-                Restart Race
-              </button>
+              {replaySummary.tierAchieved === "gold" ? (
+                <button className="modal-qualify-button" onClick={resetGame}>
+                  Restart Race
+                </button>
+              ) : (
+                <button className="modal-qualify-button" onClick={() => setGamePhase("cleaning")}>
+                  Continue Cleaning
+                </button>
+              )}
             </div>
           </div>
         </div>

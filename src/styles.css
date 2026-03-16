@@ -772,6 +772,22 @@ tbody tr:nth-child(odd) {
     linear-gradient(180deg, #1b2230, #121722);
 }
 
+.replay-panel {
+  margin-top: 18px;
+}
+
+.replay-card {
+  width: 100%;
+  background:
+    radial-gradient(circle at top, rgba(125, 176, 255, 0.12), transparent 45%),
+    linear-gradient(180deg, #1a2130, #111720);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.28);
+  font-family: var(--font-euro);
+}
+
 .modal-head,
 .modal-copy,
 .layer-options,
@@ -791,6 +807,27 @@ tbody tr:nth-child(odd) {
   background:
     linear-gradient(90deg, rgba(255, 215, 0, 0.14), rgba(255, 255, 255, 0.03)),
     #121722;
+}
+
+.replay-head {
+  padding: 18px 20px;
+  background:
+    linear-gradient(90deg, rgba(125, 176, 255, 0.16), rgba(255, 255, 255, 0.03)),
+    #121722;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.replay-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #7db0ff;
+}
+
+.replay-title-wrap h3 {
+  font-family: var(--font-racing);
+  font-size: 1.15rem;
+  letter-spacing: 0.12em;
 }
 
 .modal-title-wrap {
@@ -834,6 +871,78 @@ tbody tr:nth-child(odd) {
   margin: 16px auto 0;
   line-height: 1.7;
   color: #d7dfef;
+}
+
+.replay-body {
+  padding: 24px;
+}
+
+.replay-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.replay-meta-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.replay-circuit-shell {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.04), transparent 60%),
+    rgba(10, 14, 20, 0.9);
+}
+
+.replay-circuit {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+
+.replay-circuit-path {
+  fill: none;
+  stroke: rgba(220, 230, 243, 0.48);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.replay-car-dot {
+  fill: #ffca37;
+  filter: drop-shadow(0 0 8px rgba(255, 202, 55, 0.8));
+}
+
+.replay-feed {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.replay-feed strong {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--font-racing);
+  letter-spacing: 0.08em;
+  color: #f5c518;
+}
+
+.replay-feed p {
+  margin: 0;
+  color: #d7dfef;
+  line-height: 1.6;
 }
 
 .finish-stats {
@@ -1156,6 +1265,10 @@ tbody tr:nth-child(odd) {
 
   .finish-stats {
     grid-template-columns: 1fr;
+  }
+
+  .replay-meta {
+    flex-direction: column;
   }
 
   .qualify-button {
