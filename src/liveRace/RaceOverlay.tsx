@@ -35,6 +35,33 @@ export function RaceOverlay({
   const [countdownNumber, setCountdownNumber] = useState<number | null>(null);
   const retryCountRef = useRef(0);
 
+  // FIX P1: store all countdown timeout IDs so they can be cleared on unmount,
+  // session change, or re-entry while countdown is already running.
+  const countdownTimersRef = useRef<number[]>([]);
+
+  const clearCountdownTimers = useCallback(() => {
+    for (const id of countdownTimersRef.current) {
+      window.clearTimeout(id);
+    }
+    countdownTimersRef.current = [];
+  }, []);
+
+  // Clear timers whenever loadState changes away from ready (session change, retry, unmount)
+  useEffect(() => {
+    if (loadState !== "ready") {
+      clearCountdownTimers();
+      setStartState("staged");
+      setCountdownNumber(null);
+    }
+  }, [loadState, clearCountdownTimers]);
+
+  // Clear timers on unmount
+  useEffect(() => {
+    return () => {
+      clearCountdownTimers();
+    };
+  }, [clearCountdownTimers]);
+
   const race = useLiveRace(field, scoringState, lastScoreEvent);
 
   const loadField = useCallback(async (sessionKey: number) => {
@@ -95,12 +122,26 @@ export function RaceOverlay({
     return () => window.clearTimeout(timeoutId);
   }, [defaultSessionKey, loadField, loadState]);
 
-  useEffect(() => {
-    if (loadState !== "ready") {
-      setStartState("staged");
+  // FIX P1: extracted start handler so it can guard against re-entry
+  // and register all timer IDs for cleanup.
+  const handleStartRace = useCallback(() => {
+    // Block re-entry if countdown is already running
+    if (startState === "countdown") return;
+
+    clearCountdownTimers();
+    setStartState("countdown");
+    setCountdownNumber(3);
+
+    const t1 = window.setTimeout(() => setCountdownNumber(2), 900);
+    const t2 = window.setTimeout(() => setCountdownNumber(1), 1800);
+    const t3 = window.setTimeout(() => {
       setCountdownNumber(null);
-    }
-  }, [loadState]);
+      setStartState("running");
+      race.startRace();
+    }, 2700);
+
+    countdownTimersRef.current = [t1, t2, t3];
+  }, [startState, clearCountdownTimers, race]);
 
   if (loadState === "pick") {
     return (
@@ -239,17 +280,7 @@ export function RaceOverlay({
                       </div>
                       <button
                         className="live-race-start-button"
-                        onClick={() => {
-                          setStartState("countdown");
-                          setCountdownNumber(3);
-                          window.setTimeout(() => setCountdownNumber(2), 900);
-                          window.setTimeout(() => setCountdownNumber(1), 1800);
-                          window.setTimeout(() => {
-                            setCountdownNumber(null);
-                            setStartState("running");
-                            race.startRace();
-                          }, 2700);
-                        }}
+                        onClick={handleStartRace}
                       >
                         Start Race
                       </button>
