@@ -229,8 +229,10 @@ export async function fetchRaceField(
   log("Processing data...");
 
   const drivers: Record<number, F1Driver> = {};
+  const driverOrder: number[] = [];
   for (const driver of driverData) {
     const number = Number(driver.driver_number);
+    driverOrder.push(number);
     drivers[number] = {
       number,
       acronym: String(driver.name_acronym ?? `D${number}`),
@@ -403,9 +405,10 @@ export async function fetchRaceField(
   // ── Determine race start positions from first available position data ────────
   // Used to stagger grid starting offsets so cars don't all overlap at t=0.
   const startingPositions: Record<number, number> = {};
-  for (const driverNumber of Object.keys(drivers).map(Number)) {
+  const fallbackGridOrder = driverOrder.length > 0 ? driverOrder : Object.keys(drivers).map(Number).sort((a, b) => a - b);
+  for (const [index, driverNumber] of fallbackGridOrder.entries()) {
     const firstPos = positionsByDriver[driverNumber]?.[0];
-    startingPositions[driverNumber] = firstPos ? Number(firstPos.position) : 20;
+    startingPositions[driverNumber] = firstPos ? Number(firstPos.position) : index + 1;
   }
 
   const sampleIntervalMs = 1000;
@@ -460,12 +463,12 @@ export async function fetchRaceField(
           trackProgress = pointToTrackProgress(Number(location.x), Number(location.y));
         }
       } else {
-        const positionValue = Number(position?.position ?? 20);
-        const stagger = ((20 - positionValue) / 20) * 0.035;
+        const positionValue = Number(position?.position ?? startingPositions[driverNumber] ?? 20);
+        const stagger = ((20 - positionValue) / 19) * GRID_STAGGER_RANGE;
         trackProgress = (lapProgressAt(driverNumber, absoluteTimestamp) + stagger) % 1;
       }
 
-      const fallbackPosition = Math.max(1, Math.min(20, driverNumber));
+      const fallbackPosition = Math.max(1, Math.min(20, startingPositions[driverNumber] ?? fallbackGridOrder.indexOf(driverNumber) + 1));
       const fallbackSpeed = 210 + ((driverNumber * 17) % 85);
       const fallbackGear = 6 + (driverNumber % 3);
 
