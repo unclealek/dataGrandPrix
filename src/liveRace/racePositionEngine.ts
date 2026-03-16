@@ -7,6 +7,7 @@ const BASE_PROGRESS_PER_MS = 1 / 90_000;
 const SPEED_SCALE_MIN = 0.55;
 const SPEED_SCALE_MAX = 1.05;
 const EVENT_FLASH_DURATION_MS = 2000;
+const TOTAL_RACE_CARS = 21;
 
 function immediateProgressDelta(scoreEvent: ScoreEvent, current: UserCarState) {
   const qualityGain = Math.max(0, scoreEvent.quality_score - current.qualityScore);
@@ -17,18 +18,18 @@ function immediateProgressDelta(scoreEvent: ScoreEvent, current: UserCarState) {
   }
 
   if (scoreEvent.race_event === "CLEAN_LAP") {
-    return 0.006;
+    return 0.0085;
   }
 
   if (scoreEvent.action_category === "A") {
-    return Math.min(0.003, 0.0012 + qualityGain * 0.0001 + speedGain * 0.00004);
+    return Math.min(0.0045, 0.0018 + qualityGain * 0.00014 + speedGain * 0.00005);
   }
 
   if (scoreEvent.action_category === "B") {
-    return Math.min(0.0045, 0.002 + qualityGain * 0.00012 + speedGain * 0.00005);
+    return Math.min(0.0065, 0.0028 + qualityGain * 0.00015 + speedGain * 0.00006);
   }
 
-  return 0.0008;
+  return 0.0012;
 }
 
 export type VisualCueType =
@@ -75,11 +76,7 @@ export function calcProgressDelta(scoringSpeed: number, elapsedMs: number) {
 export function calcRacePosition(userProgress: number, userLap: number, realDrivers: RaceDriverPosition[]) {
   const userAbsolute = userLap + userProgress;
   const driversAhead = realDrivers.filter((driver) => driver.lap + driver.trackProgress > userAbsolute);
-  return Math.min(20, driversAhead.length + 1);
-}
-
-export function scoreToPosition(qualityScore: number) {
-  return Math.round(20 - (qualityScore / 100) * 10);
+  return Math.min(TOTAL_RACE_CARS, driversAhead.length + 1);
 }
 
 export function raceEventToVisualCue(raceEvent: string): VisualCueType {
@@ -106,7 +103,7 @@ export function raceEventToVisualCue(raceEvent: string): VisualCueType {
 export function createInitialUserCarState(): UserCarState {
   return {
     trackProgress: 0, // starts at back of grid; real drivers are staggered ahead in fetchRaceField
-    position: 20,
+    position: TOTAL_RACE_CARS,
     speed: 240,
     qualityScore: 0,
     visualCue: "NONE",
@@ -136,7 +133,7 @@ export function createStagedUserCarState(
     fuel: scoringState.currentFuel,
     qualityScore,
     hudMessage,
-    position: scoreToPosition(qualityScore),
+    position: base.position,
   };
 }
 
@@ -144,9 +141,11 @@ export function applyScoreEventToCarState(
   current: UserCarState,
   scoreEvent: ScoreEvent,
   scoringState: SessionScoringState,
+  realDrivers: RaceDriverPosition[],
 ): UserCarState {
   const visualCue = raceEventToVisualCue(scoreEvent.race_event);
   const nextTrackProgress = Math.max(0, Math.min(0.995, current.trackProgress + immediateProgressDelta(scoreEvent, current)));
+  const nextPosition = calcRacePosition(nextTrackProgress, current.lap, realDrivers);
 
   return {
     ...current,
@@ -158,7 +157,7 @@ export function applyScoreEventToCarState(
     cueTimeRemaining: visualCue === "NONE" ? 0 : EVENT_FLASH_DURATION_MS,
     isPenalty: scoreEvent.action_category === "D",
     hudMessage: scoreEvent.hud_message,
-    position: current.position,
+    position: nextPosition,
   };
 }
 

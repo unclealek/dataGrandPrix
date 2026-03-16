@@ -193,11 +193,15 @@ export function useLiveRace(
       return;
     }
 
+    if (isPlaying) {
+      return;
+    }
+
     setUserCar((current) => alignUserToBackmarker({
       ...current,
-      ...createStagedUserCarState(scoringState, lastScoreEvent),
+      ...createStagedUserCarState(scoringState, null),
     }));
-  }, [alignUserToBackmarker, field, lastScoreEvent, scoringState]);
+  }, [alignUserToBackmarker, field, isPlaying, scoringState]);
 
   useEffect(() => {
     if (!lastScoreEvent || lastScoreEvent === scoreEventRef.current || !scoringState) {
@@ -205,13 +209,13 @@ export function useLiveRace(
     }
     scoreEventRef.current = lastScoreEvent;
     setUserCar((current) => {
-      const next = applyScoreEventToCarState(current, lastScoreEvent, scoringState);
       const driverPositions: RaceDriverPosition[] = Object.values(getFramesAt(replayTime)).map((frame) => ({
         driverNumber: frame.driverNumber,
         trackProgress: frame.trackProgress,
         position: frame.position,
         lap: frame.lap,
       }));
+      const next = applyScoreEventToCarState(current, lastScoreEvent, scoringState, driverPositions);
 
       const driversAheadBefore = driverPositions.filter(
         (driver) => absoluteProgress(driver.lap, driver.trackProgress) > absoluteProgress(current.lap, current.trackProgress),
@@ -231,7 +235,7 @@ export function useLiveRace(
         absoluteBefore: absoluteProgress(current.lap, current.trackProgress),
         absoluteAfter: absoluteProgress(next.lap, next.trackProgress),
         positionBefore: current.position,
-        positionAfterProjected: driversAheadAfter + 1,
+        positionAfterProjected: Math.min(21, driversAheadAfter + 1),
         driversPassedProjected: Math.max(0, driversAheadBefore - driversAheadAfter),
       });
 
