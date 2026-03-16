@@ -231,6 +231,13 @@ export default function App() {
   );
   const shouldPulseQualify = qualifyTargets.length > 0 && qualifyArmed[activeLayer];
   const activeScoreEvent = pendingScoreEvent ?? session.scoring.lastScoreEvent;
+  const liveRaceMessage =
+    activeScoreEvent?.hud_message ??
+    (session.scoring.currentSpeed < 180
+      ? "The car is crawling. Clean the data to unlock pace."
+      : session.scoring.currentSpeed < 240
+        ? "Building pace through the field."
+        : "Full race rhythm. Keep the queries sharp.");
 
   const telemetryStats = useMemo(() => {
     return [
@@ -355,6 +362,23 @@ export default function App() {
     const timeoutId = window.setTimeout(() => setPreviewSuccessFlash(false), 800);
     return () => window.clearTimeout(timeoutId);
   }, [previewSuccessFlash]);
+
+  useEffect(() => {
+    if (gamePhase !== "cleaning") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setTrackPosition((prev) => {
+        const pace = Math.max(120, session.scoring.currentSpeed);
+        const delta = (pace / 240) * 0.0016;
+        const next = prev + delta;
+        return next >= 1 ? next - 1 : next;
+      });
+    }, 120);
+
+    return () => window.clearInterval(intervalId);
+  }, [gamePhase, session.scoring.currentSpeed]);
 
   async function runQuery() {
     if (!currentVersion) {
@@ -628,9 +652,6 @@ export default function App() {
         },
       };
     });
-    setReplayBuffer((prev) => finaliseReplayBuffer(prev, targetLayer, finalQualityScore, finalLockedErrors));
-    setReplaySummary(null);
-    setGamePhase("replay");
     setIsQualifyOpen(false);
     setSelectedQualifyTarget(null);
     setMessage({
@@ -640,6 +661,13 @@ export default function App() {
           ? `${qualifyEvent.hud_message} Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`
           : `Qualified into ${layerLabels[targetLayer]}. Previous layer history is locked.`,
     });
+    if (targetLayer === "gold") {
+      setReplayBuffer((prev) => finaliseReplayBuffer(prev, targetLayer, finalQualityScore, finalLockedErrors));
+      setReplaySummary(null);
+      setGamePhase("replay");
+    } else {
+      setGamePhase("cleaning");
+    }
     setQualifyArmed((prev) => ({ ...prev, [targetLayer]: false }));
     setPendingScoreEvent(null);
   }
@@ -722,17 +750,24 @@ export default function App() {
               <span>Event: {activeScoreEvent?.race_event ?? "GRID_READY"}</span>
             </div>
 
-            {gamePhase === "replay" && (
-              <RaceReplay
-                buffer={replayBuffer}
-                circuitPoints={circuitData.points}
-                rotationDeg={circuitData.rotation_deg}
-                onComplete={(summary) => {
-                  setReplaySummary(summary);
-                  setGamePhase("results");
-                }}
-              />
-            )}
+            <RaceReplay
+              buffer={replayBuffer}
+              circuitPoints={circuitData.points}
+              rotationDeg={circuitData.rotation_deg}
+              mode={gamePhase === "replay" ? "replay" : "cleaning"}
+              liveTrackPosition={trackPosition}
+              liveSpeed={session.scoring.currentSpeed}
+              liveLayer={activeLayer}
+              liveMessage={liveRaceMessage}
+              onComplete={
+                gamePhase === "replay"
+                  ? (summary) => {
+                      setReplaySummary(summary);
+                      setGamePhase("results");
+                    }
+                  : undefined
+              }
+            />
 
           <div className="grid-panels">
             <div className="source-section">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Flag, Gauge, Trophy } from "lucide-react";
 import { formatLapTime, summariseReplay, type ReplayBuffer } from "./lib/replay";
+import type { Layer } from "./types";
 
 interface CircuitPoint {
   x: number;
@@ -11,7 +12,12 @@ interface RaceReplayProps {
   buffer: ReplayBuffer;
   circuitPoints: CircuitPoint[];
   rotationDeg?: number;
-  onComplete: (summary: NonNullable<ReturnType<typeof summariseReplay>>) => void;
+  mode: "cleaning" | "replay";
+  liveTrackPosition: number;
+  liveSpeed: number;
+  liveLayer: Layer;
+  liveMessage: string;
+  onComplete?: (summary: NonNullable<ReturnType<typeof summariseReplay>>) => void;
 }
 
 function pointAtTrackPosition(points: CircuitPoint[], trackPosition: number) {
@@ -32,14 +38,24 @@ function pointAtTrackPosition(points: CircuitPoint[], trackPosition: number) {
   };
 }
 
-export default function RaceReplay({ buffer, circuitPoints, rotationDeg = 0, onComplete }: RaceReplayProps) {
+export default function RaceReplay({
+  buffer,
+  circuitPoints,
+  rotationDeg = 0,
+  mode,
+  liveTrackPosition,
+  liveSpeed,
+  liveLayer,
+  liveMessage,
+  onComplete,
+}: RaceReplayProps) {
   const summary = useMemo(() => summariseReplay(buffer), [buffer]);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [displayTrackPosition, setDisplayTrackPosition] = useState(buffer.entries[0]?.track_position ?? 0);
+  const [displayTrackPosition, setDisplayTrackPosition] = useState(liveTrackPosition);
 
   useEffect(() => {
     const replaySummary = summary;
-    if (!replaySummary || buffer.entries.length === 0) {
+    if (mode !== "replay" || !replaySummary || buffer.entries.length === 0 || !onComplete) {
       return;
     }
 
@@ -53,7 +69,7 @@ export default function RaceReplay({ buffer, circuitPoints, rotationDeg = 0, onC
       }
 
       if (index >= buffer.entries.length) {
-        onComplete(replaySummary as NonNullable<ReturnType<typeof summariseReplay>>);
+        onComplete?.(replaySummary as NonNullable<ReturnType<typeof summariseReplay>>);
         return;
       }
 
@@ -85,17 +101,21 @@ export default function RaceReplay({ buffer, circuitPoints, rotationDeg = 0, onC
       window.cancelAnimationFrame(frameId);
       window.clearTimeout(timeoutId);
     };
-  }, [buffer, onComplete, summary]);
+  }, [buffer, mode, onComplete, summary]);
 
-  const activeEntry = buffer.entries[activeIndex] ?? null;
+  useEffect(() => {
+    if (mode === "cleaning") {
+      setDisplayTrackPosition(liveTrackPosition);
+    }
+  }, [liveTrackPosition, mode]);
+
+  const activeEntry = mode === "replay" ? buffer.entries[activeIndex] ?? null : buffer.entries[buffer.entries.length - 1] ?? null;
   const carPoint = pointAtTrackPosition(circuitPoints, displayTrackPosition);
   const pathData = circuitPoints
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x * 100} ${point.y * 100}`)
     .join(" ");
-
-  if (!summary) {
-    return null;
-  }
+  const tierLabel = mode === "replay" && summary ? summary.tierAchieved.toUpperCase() : liveLayer.toUpperCase();
+  const tertiaryLabel = mode === "replay" && summary ? formatLapTime(summary.finalLapTimeMs) : `${Math.round(liveTrackPosition * 100)}% track`;
 
   return (
     <section className="replay-panel">
@@ -104,7 +124,7 @@ export default function RaceReplay({ buffer, circuitPoints, rotationDeg = 0, onC
           <div className="replay-title-wrap">
             <Flag size={18} />
             <div>
-              <p className="section-kicker">Circuit Replay</p>
+              <p className="section-kicker">{mode === "replay" ? "Circuit Replay" : "Live Circuit"}</p>
               <h3>Current Cleaning Run</h3>
             </div>
           </div>
@@ -113,14 +133,14 @@ export default function RaceReplay({ buffer, circuitPoints, rotationDeg = 0, onC
           <div className="replay-meta">
             <div className="replay-meta-card">
               <Gauge size={16} />
-              <span>{activeEntry ? `${activeEntry.speed_at_event} km/h` : "0 km/h"}</span>
+              <span>{mode === "replay" ? (activeEntry ? `${activeEntry.speed_at_event} km/h` : "0 km/h") : `${liveSpeed} km/h`}</span>
             </div>
             <div className="replay-meta-card">
               <Trophy size={16} />
-              <span>{summary.tierAchieved.toUpperCase()}</span>
+              <span>{tierLabel}</span>
             </div>
             <div className="replay-meta-card">
-              <span>{formatLapTime(summary.finalLapTimeMs)}</span>
+              <span>{tertiaryLabel}</span>
             </div>
           </div>
 
@@ -134,8 +154,8 @@ export default function RaceReplay({ buffer, circuitPoints, rotationDeg = 0, onC
           </div>
 
           <div className="replay-feed">
-            <strong>{activeEntry?.race_event ?? "GRID_READY"}</strong>
-            <p>{activeEntry?.hud_message ?? "Preparing replay telemetry."}</p>
+            <strong>{mode === "replay" ? activeEntry?.race_event ?? "GRID_READY" : activeEntry?.race_event ?? "LIVE_RUN"}</strong>
+            <p>{mode === "replay" ? activeEntry?.hud_message ?? "Preparing replay telemetry." : liveMessage}</p>
           </div>
         </div>
       </div>
